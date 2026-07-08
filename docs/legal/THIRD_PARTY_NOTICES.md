@@ -58,6 +58,7 @@ author clarifies:
 
 ## House rules for adding third-party material
 
-Anything third-party added to this repo in the future goes in `third_party/`
-with its original license file — see `third_party/README.md`. Code with no
-clear license does not get committed.
+Anything third-party added to this repo in the future gets its own
+clearly-named folder, keeps the component's original license/notice files
+unmodified, and gets an entry in this file (what it is, where it came from,
+its license). Code with no clear license does not get committed.
