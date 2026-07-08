@@ -96,9 +96,13 @@ can't reboot the chip over that port. Power-cycle to boot the new firmware.
    optional.
 2. Reconnect for use: PC → USB2 (middle), console → USB1 (left),
    controller → USB3 (right).
-3. On the CH343 command port (4000000 baud 8N1):
+3. **If the console doesn't respond to input, replug USB1 last.** The console
+   only inspects the device on attach — if it enumerated while the board was
+   still coming up after a flash, it marks the device dead and never looks
+   again. Unplug USB1, wait ~5 s, replug once everything else is up.
+4. On the CH343 command port (4000000 baud 8N1):
    `python accessibility/makcu_access.py` → expect `kmbox: 1.0.0 …`.
-4. `python accessibility/makcu_monitor.py` → should stream `KMS …` telemetry
+5. `python accessibility/makcu_monitor.py` → should stream `KMS …` telemetry
    while you move the sticks.
 
 ## If it won't connect
