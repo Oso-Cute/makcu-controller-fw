@@ -1,6 +1,10 @@
 # MAKCM Controller Passthrough — community fix 
 
 This was 100% done with the help of claude.
+Short video walkthrough and test.
+https://youtu.be/0g_Uu8EqmU4
+
+
 Code to support controller was unfinished for the MAKCM (dual-ESP32-S3 "MAKCU" board) **game
 controller passthrough firmware**, with the fixes needed to make it actually
 work end-to-end, plus a small Python gui for quick testing.
