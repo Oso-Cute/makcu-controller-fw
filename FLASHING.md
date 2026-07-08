@@ -1,6 +1,8 @@
 # Flashing the MAKCM
 
-**Board:** ESP32-S3 ×2, 4 MB flash, QIO @ 80 MHz. Flash baud 921600.
+**Board:** ESP32-S3 ×2, 4 MB flash, **DIO** @ 80 MHz. Flash baud 921600.
+(The images boot in DIO mode — flashing them with QIO headers leaves the MCU
+unable to boot; the controller then blinks forever in its announce loop.)
 
 > ⚠️ **You must flash BOTH MCUs.** The Left and Right firmware share a custom
 > IPC protocol; a board with only one side flashed (or a stock Right MCU)
@@ -41,7 +43,7 @@ esptool.py --chip esp32s3 --port COM4 --baud 921600 write_flash 0x0 firmware/bin
 
 Replace the COM ports with whatever appears on your machine. The Espressif
 Flash Download Tool GUI also works: chip = ESP32-S3, image @ `0x0`,
-SPI = QIO / 80 MHz.
+SPI = DIO / 80 MHz.
 
 ## Option C — build from source and flash with PlatformIO
 

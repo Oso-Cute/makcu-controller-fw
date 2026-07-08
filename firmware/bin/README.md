@@ -8,7 +8,8 @@ Merged full-flash images built from this repo's source, flashed at offset
 | `MERGED_left.bin` | Left (USB1, console-facing) | Quiet build (`COM3_LOG=0`) + accessibility features |
 | `MERGED_right.bin` | Right (USB3, controller host) | Includes the GIP init fix |
 
-Target: ESP32-S3, 4 MB flash, QIO @ 80 MHz.
+Target: ESP32-S3, 4 MB flash, DIO @ 80 MHz (do not re-merge with QIO — it
+won't boot).
 
 `../flash_tool.py` looks for these files here by default. Flash manually
 with:
