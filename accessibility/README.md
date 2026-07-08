@@ -24,15 +24,17 @@ python makcu_gui.py
 Tabs:
 - **Device** — lists serial ports and flags the CH343 (the command port). Click
   *Auto-detect CH343* → *Connect* → *Handshake test* (expects `kmbox: 1.0.0…`).
-- **Steady** — enable the tremor filter; sliders for smoothing + deadzone (live).
-- **Trim** — constant stick offset to cancel drift.
-- **Monitor** — live stick/button readout; *Measure shake (5s)* auto-fills the
-  recommended steady + trim values.
+- **Monitor** — live stick readout plus a named button grid (lights up as you
+  press; names come from `tools/button_map.json`).
 - **Buttons** — latch toggles: tap once = button held, tap again = release.
 - **Test** — manual hardware validation, two tests: LB/RB press spam and an
   aim-stick full-left/full-right sweep. Only run when you click a Start
   button; Stop interrupts immediately. Wiggle a stick during a test — GIP
   controllers only send reports on change, and injection rides on reports.
+
+> Steady (tremor filter) and Trim (drift cancel) exist in the firmware and
+> can be driven from `makcu_access.py` / `makcu_monitor.py`; their GUI tabs
+> are parked for this initial release.
 
 > The command port only responds when USB1 (Left MCU) is powered and USB2
 > (CH343) is in this PC. For the controller pipeline to feed real data, both

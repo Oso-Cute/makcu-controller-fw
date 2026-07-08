@@ -3,11 +3,13 @@ makcu_gui.py — accessibility control panel for the MAKCM controller passthroug
 
 A tabbed GUI over the same km.* command channel the CLI uses:
   - Device : detect serial ports, flag the CH343 command port, connect + handshake
-  - Steady : tremor-damp filter (low-pass + deadzone) on the aim stick
-  - Trim   : constant stick offset to cancel drift
-  - Monitor: live stick/button readout, measure tremor, apply recommendations
+  - Monitor: live stick/button readout with a named button grid
   - Buttons: latch/toggle holds (tap once = held) for one-handed / no-long-hold use
-  - Test   : manual hardware validation — LB/RB spam test (never runs on its own)
+  - Test   : manual hardware validation — button/stick tests (never run on their own)
+
+(Steady tremor filter and drift trim exist in the firmware and in
+makcu_access.py / makcu_monitor.py; their GUI tabs are parked for the
+initial release.)
 
 Requires: pip install pyserial   (tkinter ships with Python on Windows)
 Run:      python makcu_gui.py
@@ -17,8 +19,6 @@ import threading
 import queue
 import time
 import re
-import statistics
-
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -46,7 +46,7 @@ def classify_port(p):
 class MakcuGUI:
     def __init__(self, root):
         self.root = root
-        root.title("MAKCM Accessibility Panel")
+        root.title("Makcu Panel")
         root.geometry("640x560")
 
         self.mk = None                 # Makcu instance when connected
@@ -55,14 +55,10 @@ class MakcuGUI:
         self.tel_q = queue.Queue()     # parsed telemetry dicts -> UI
         self.io_lock = threading.Lock()
         self.latched = {}              # button name -> bool
-        self._measuring = False
-        self._measure_samples = []
 
         self.nb = ttk.Notebook(root)
         self.nb.pack(fill="both", expand=True, padx=8, pady=8)
         self._build_device_tab()
-        self._build_steady_tab()
-        self._build_trim_tab()
         self._build_monitor_tab()
         self._build_buttons_tab()
         self._build_test_tab()
@@ -193,77 +189,6 @@ class MakcuGUI:
         except Exception as e:
             self.dev_info.set(f"Handshake error: {e}")
 
-    def _slider(self, parent, label, var, lo, hi, cb):
-        """A labeled horizontal slider that calls cb() on release + shows value."""
-        row = ttk.Frame(parent)
-        row.pack(fill="x", pady=4)
-        ttk.Label(row, text=label, width=32, anchor="w").pack(side="left")
-        val = ttk.Label(row, textvariable=var, width=7)
-        val.pack(side="right")
-        s = ttk.Scale(row, from_=lo, to=hi, orient="horizontal",
-                      command=lambda v: var.set(int(float(v))))
-        s.set(var.get())
-        s.pack(side="left", fill="x", expand=True, padx=6)
-        s.bind("<ButtonRelease-1>", lambda _e: cb())
-        return s
-
-    # ------------------------------------------------------------------ Steady
-    def _build_steady_tab(self):
-        f = ttk.Frame(self.nb)
-        self.nb.add(f, text="Steady")
-        ttk.Label(f, text="Tremor-damping filter on the aim (right) stick.",
-                  wraplength=580).pack(anchor="w", pady=(8, 4))
-
-        self.steady_on = tk.BooleanVar(value=False)
-        ttk.Checkbutton(f, text="Enable steady filter", variable=self.steady_on,
-                        command=self._apply_steady).pack(anchor="w", pady=4)
-
-        self.smooth = tk.IntVar(value=70)
-        self._slider(f, "Smoothing (0=off, 99=max lag)", self.smooth, 0, 99,
-                     self._apply_steady)
-        self.dead = tk.IntVar(value=6000)
-        self._slider(f, "Deadzone (ignore shake below)", self.dead, 0, 20000,
-                     self._apply_steady)
-
-        ttk.Label(f, text="Tip: measure your shake in the Monitor tab first, then "
-                  "let it apply a recommended starting point.",
-                  wraplength=580, foreground="#666").pack(anchor="w", pady=10)
-
-    def _apply_steady(self, *_):
-        if not self.mk:
-            return
-        with self.io_lock:
-            self.mk.steady_smoothing(self.smooth.get())
-            self.mk.steady_deadzone(self.dead.get())
-            self.mk.steady(self.steady_on.get())
-        self.status.set(f"Steady {'ON' if self.steady_on.get() else 'off'} "
-                        f"smooth={self.smooth.get()} dead={self.dead.get()}")
-
-    # -------------------------------------------------------------------- Trim
-    def _build_trim_tab(self):
-        f = ttk.Frame(self.nb)
-        self.nb.add(f, text="Trim")
-        ttk.Label(f, text="Constant right-stick offset — cancel drift or add a gentle pull.",
-                  wraplength=580).pack(anchor="w", pady=(8, 6))
-        self.trim_x = tk.IntVar(value=0)
-        self.trim_y = tk.IntVar(value=0)
-        self._slider(f, "Trim X (left / right)", self.trim_x, -20000, 20000, self._apply_trim)
-        self._slider(f, "Trim Y (up / down)", self.trim_y, -20000, 20000, self._apply_trim)
-        row = ttk.Frame(f); row.pack(fill="x", pady=8)
-        ttk.Button(row, text="Apply", command=self._apply_trim).pack(side="left")
-        ttk.Button(row, text="Clear", command=self._clear_trim).pack(side="left", padx=6)
-
-    def _apply_trim(self, *_):
-        if not self.mk:
-            return
-        with self.io_lock:
-            self.mk.trim(self.trim_x.get(), self.trim_y.get())
-        self.status.set(f"Trim ({self.trim_x.get()},{self.trim_y.get()})")
-
-    def _clear_trim(self):
-        self.trim_x.set(0); self.trim_y.set(0)
-        self._apply_trim()
-
     # ----------------------------------------------------------------- Monitor
     def _build_monitor_tab(self):
         f = ttk.Frame(self.nb)
@@ -297,11 +222,6 @@ class MakcuGUI:
             ttk.Label(f, text="(No button map — run tools/button_mapper.py to "
                       "name the b: bits.)", foreground="#666").pack(anchor="w")
 
-        ttk.Button(f, text="Measure shake (5s) + recommend",
-                   command=self.measure_shake).pack(anchor="w", pady=10)
-        self.mon_result = tk.StringVar(value="")
-        ttk.Label(f, textvariable=self.mon_result, wraplength=580,
-                  justify="left", foreground="#2a6").pack(anchor="w")
         self._last_tel = {}
 
     def _load_button_map(self):
@@ -321,45 +241,6 @@ class MakcuGUI:
             return
         with self.io_lock:
             self.mk.telem(self.mon_live.get())
-
-    def measure_shake(self):
-        if not self.mk:
-            messagebox.showwarning("Not connected", "Connect first.")
-            return
-        self.mon_result.set("Hold the stick as steady as you can… collecting 5s.")
-        with self.io_lock:
-            self.mk.telem(True)
-        self._measure_samples = []
-        self._measuring = True
-        # drain loop collects into _measure_samples; stop + compute after 5s
-        self.root.after(5000, self._finish_measure)
-
-    def _finish_measure(self):
-        self._measuring = False
-        samples = list(self._measure_samples)
-        if not self.mon_live.get():
-            with self.io_lock:
-                self.mk.telem(False)
-        if not samples:
-            self.mon_result.set("No telemetry — is the controller plugged in and streaming?")
-            return
-        def stat(axis):
-            v = [s[axis] for s in samples]
-            return max(v) - min(v), statistics.fmean(v)
-        rxp, rxm = stat("rx"); ryp, rym = stat("ry")
-        shake = max(rxp, ryp)
-        dead = min(20000, int(shake * 0.6))
-        alpha = 60 if shake < 4000 else 75 if shake < 12000 else 85
-        tx, ty = round(rxm), round(rym)
-        msg = (f"Shake peak-to-peak: X={rxp}  Y={ryp}\n"
-               f"Applied → smoothing={alpha}, deadzone={dead}")
-        self.smooth.set(alpha)
-        self.dead.set(dead)
-        if abs(tx) > 1500 or abs(ty) > 1500:
-            msg += f"\nDrift detected ({tx:+d},{ty:+d}) → trim set to {-tx},{-ty}"
-            self.trim_x.set(-tx)
-            self.trim_y.set(-ty)
-        self.mon_result.set(msg)
 
     # ----------------------------------------------------------------- Buttons
     def _build_buttons_tab(self):
@@ -581,8 +462,6 @@ class MakcuGUI:
             while True:
                 d = self.tel_q.get_nowait()
                 last = d
-                if self._measuring:
-                    self._measure_samples.append(d)
         except queue.Empty:
             pass
         if last:
