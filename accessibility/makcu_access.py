@@ -15,6 +15,8 @@ accessibility switch, etc).
 Requires: pip install pyserial
 """
 
+import time
+
 import serial   # pyserial
 
 
@@ -43,9 +45,24 @@ class Makcu:
         self.ser.write((line + "\n").encode("ascii"))
 
     def version(self):
-        """Handshake — proves the link works. Returns the kmbox id line."""
+        """Handshake — proves the link works. Returns the kmbox id line.
+        Polls up to ~0.8 s (the serial timeout is 50 ms, and the reply can
+        land later than that right after opening the port) and tolerates
+        telemetry lines interleaved in front of the reply."""
+        self.ser.reset_input_buffer()
         self._send("km.version()")
-        return self.ser.read(128).decode("ascii", "replace")
+        buf = b""
+        end = time.time() + 0.8
+        while time.time() < end:
+            buf += self.ser.read(128)
+            if b"kmbox" in buf and b">>>" in buf:
+                break
+        text = buf.decode("ascii", "replace")
+        # skip any KMS telemetry lines that arrived first
+        for line in text.splitlines():
+            if line.strip().startswith("kmbox"):
+                return line.strip()
+        return text
 
     # --- raw hold / release -------------------------------------------------
     def hold(self, name):
