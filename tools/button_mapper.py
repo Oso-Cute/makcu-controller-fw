@@ -88,9 +88,14 @@ def main():
     print("\nPress and HOLD each button when prompted "
           "(Enter to skip, Ctrl+C to abort):\n")
     try:
+        seen = baseline
         for name in BUTTONS_TO_MAP:
             input(f"  ready for {name!r}? press Enter, then hold the button … ")
-            mask = read_mask(mk, CAPTURE_S) & ~baseline
+            # flush the previous button's release tail so its bit can't
+            # bleed into this capture, then ignore every bit seen before
+            pre = read_mask(mk, 0.6)
+            mask = read_mask(mk, CAPTURE_S) & ~(seen | pre)
+            seen |= mask
             if mask:
                 mapping[name] = f"{mask:#06x}"
                 print(f"    {name} = {mask:#06x}")

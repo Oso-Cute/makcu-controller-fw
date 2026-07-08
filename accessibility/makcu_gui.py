@@ -281,13 +281,19 @@ class MakcuGUI:
             ttk.Label(grid, textvariable=v, width=10, anchor="w",
                       font=("Consolas", 11)).grid(row=i, column=1, sticky="w")
 
+        # Live button indicator grid — names come from tools/button_map.json.
         self.btn_map = self._load_button_map()
-        row = ttk.Frame(f); row.pack(anchor="w", pady=(2, 0))
-        ttk.Label(row, text="Buttons:", width=8, anchor="w").pack(side="left")
-        self.mon_btn_names = tk.StringVar(value="—")
-        ttk.Label(row, textvariable=self.mon_btn_names, font=("Consolas", 11),
-                  foreground="#26c").pack(side="left")
-        if not self.btn_map:
+        self.mon_btn_labels = {}
+        if self.btn_map:
+            ttk.Label(f, text="Buttons (live):").pack(anchor="w", pady=(8, 2))
+            bgrid = ttk.Frame(f)
+            bgrid.pack(anchor="w")
+            for i, name in enumerate(self.btn_map):
+                lbl = tk.Label(bgrid, text=name, width=11, relief="ridge",
+                               font=("Segoe UI", 9), bg="#e8e8e8", fg="#888")
+                lbl.grid(row=i // 5, column=i % 5, padx=3, pady=3)
+                self.mon_btn_labels[name] = lbl
+        else:
             ttk.Label(f, text="(No button map — run tools/button_mapper.py to "
                       "name the b: bits.)", foreground="#666").pack(anchor="w")
 
@@ -584,11 +590,12 @@ class MakcuGUI:
                 self.mon_vars[k].set(str(last.get(k, "—")))
             b = last.get("b", 0)
             self.mon_vars["b"].set(f"{b:#06x}")
-            if self.btn_map:
-                names = [n for n, m in self.btn_map.items() if b & m]
-                self.mon_btn_names.set(" + ".join(names) if names else "—")
-            else:
-                self.mon_btn_names.set(f"{b:#06x}" if b else "—")
+            for name, lbl in self.mon_btn_labels.items():
+                m = self.btn_map[name]
+                if (b & m) == m:
+                    lbl.config(bg="#2a6", fg="white")
+                else:
+                    lbl.config(bg="#e8e8e8", fg="#888")
         self.root.after(60, self._drain_telemetry)
 
     def on_close(self):
