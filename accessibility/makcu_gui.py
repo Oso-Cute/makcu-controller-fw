@@ -273,12 +273,33 @@ class MakcuGUI:
             ttk.Label(grid, textvariable=v, width=10, anchor="w",
                       font=("Consolas", 11)).grid(row=i, column=1, sticky="w")
 
+        self.btn_map = self._load_button_map()
+        row = ttk.Frame(f); row.pack(anchor="w", pady=(2, 0))
+        ttk.Label(row, text="Buttons:", width=8, anchor="w").pack(side="left")
+        self.mon_btn_names = tk.StringVar(value="—")
+        ttk.Label(row, textvariable=self.mon_btn_names, font=("Consolas", 11),
+                  foreground="#26c").pack(side="left")
+        if not self.btn_map:
+            ttk.Label(f, text="(No button map — run tools/button_mapper.py to "
+                      "name the b: bits.)", foreground="#666").pack(anchor="w")
+
         ttk.Button(f, text="Measure shake (5s) + recommend",
                    command=self.measure_shake).pack(anchor="w", pady=10)
         self.mon_result = tk.StringVar(value="")
         ttk.Label(f, textvariable=self.mon_result, wraplength=580,
                   justify="left", foreground="#2a6").pack(anchor="w")
         self._last_tel = {}
+
+    def _load_button_map(self):
+        """name -> bit mask, from tools/button_map.json if it exists."""
+        import json, os
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "..", "tools", "button_map.json")
+        try:
+            with open(path) as fh:
+                return {k: int(v, 16) for k, v in json.load(fh).items()}
+        except Exception:
+            return {}
 
     def _toggle_live(self):
         if not self.mk:
@@ -366,9 +387,11 @@ class MakcuGUI:
     def _build_test_tab(self):
         f = ttk.Frame(self.nb)
         self.nb.add(f, text="Test")
-        ttk.Label(f, text="Manual hardware validation. Spams LB + RB press/release "
-                  "for the chosen duration so you can confirm inputs reach the "
-                  "console/PC. Runs ONLY when you click Start.",
+        ttk.Label(f, text="Manual hardware validation. Tests run ONLY when you "
+                  "click a Start button.\n"
+                  "Tip: GIP controllers only send USB reports on change — wiggle "
+                  "a stick slightly during a test so injection has reports to "
+                  "ride on.",
                   wraplength=580, justify="left").pack(anchor="w", pady=(8, 6))
 
         row = ttk.Frame(f)
@@ -376,13 +399,25 @@ class MakcuGUI:
         ttk.Label(row, text="Duration (s):").pack(side="left")
         self.test_dur = tk.StringVar(value="4")
         ttk.Entry(row, textvariable=self.test_dur, width=6).pack(side="left", padx=6)
-        self.test_start_btn = ttk.Button(row, text="Start Test", command=self._start_test)
-        self.test_start_btn.pack(side="left", padx=6)
+        self.test1_btn = ttk.Button(row, text="Test 1: LB/RB spam",
+                                    command=lambda: self._start_test(1))
+        self.test1_btn.pack(side="left", padx=6)
+        self.test2_btn = ttk.Button(row, text="Test 2: aim-stick sweep",
+                                    command=lambda: self._start_test(2))
+        self.test2_btn.pack(side="left")
         self.test_stop_btn = ttk.Button(row, text="STOP", command=self._stop_test,
                                         state="disabled")
-        self.test_stop_btn.pack(side="left")
+        self.test_stop_btn.pack(side="left", padx=6)
 
-        self.test_log = tk.Text(f, height=12, wrap="word", font=("Consolas", 9),
+        ttk.Label(f, text="Test 1: presses+releases LB and RB (~3×/s). "
+                  "Test 2: slams the aim (right) stick full LEFT / full RIGHT "
+                  "every 0.4 s via km.trim. (The firmware can only inject the "
+                  "right stick — left-stick injection doesn't exist in "
+                  "km_inject.c yet.)",
+                  wraplength=580, justify="left",
+                  foreground="#666").pack(anchor="w", pady=(0, 4))
+
+        self.test_log = tk.Text(f, height=11, wrap="word", font=("Consolas", 9),
                                 state="disabled")
         self.test_log.pack(fill="both", expand=True, pady=6)
 
@@ -395,7 +430,7 @@ class MakcuGUI:
         self.test_log.see("end")
         self.test_log.configure(state="disabled")
 
-    def _start_test(self):
+    def _start_test(self, which):
         if self._test_running:
             return
         if not self.mk:
@@ -410,16 +445,20 @@ class MakcuGUI:
             return
         self._test_running = True
         self.test_stop_evt.clear()
-        self.test_start_btn.config(state="disabled")
+        self.test1_btn.config(state="disabled")
+        self.test2_btn.config(state="disabled")
         self.test_stop_btn.config(state="normal")
-        self._tlog(f"Test started — spamming LB/RB for {duration:g}s…")
-        threading.Thread(target=self._test_worker, args=(duration,),
-                         daemon=True).start()
+        name = "LB/RB spam" if which == 1 else "aim-stick sweep"
+        self._tlog(f"Test {which} ({name}) started — {duration:g}s. "
+                   "Wiggle a stick if nothing shows on the console.")
+        worker = self._test1_worker if which == 1 else self._test2_worker
+        threading.Thread(target=worker, args=(duration,), daemon=True).start()
 
     def _stop_test(self):
         self.test_stop_evt.set()
 
-    def _test_worker(self, duration):
+    def _test1_worker(self, duration):
+        """Press+release LB and RB about three times per second."""
         sent = errors = 0
         end = time.monotonic() + duration
         pressed = False
@@ -440,8 +479,7 @@ class MakcuGUI:
                 if errors >= 5:
                     self.root.after(0, self._tlog, "Too many errors — aborting.")
                     break
-            time.sleep(0.05)
-        # always leave both buttons released
+            time.sleep(0.15)
         try:
             with self.io_lock:
                 self.mk.release("LB")
@@ -449,17 +487,45 @@ class MakcuGUI:
         except Exception as e:
             errors += 1
             self.root.after(0, self._tlog, f"ERROR on final release: {e}")
-        stopped = self.test_stop_evt.is_set()
-        self.root.after(0, self._test_done, sent, errors, stopped)
+        self.root.after(0, self._test_done, "LB/RB released", sent, errors,
+                        self.test_stop_evt.is_set())
 
-    def _test_done(self, sent, errors, stopped):
+    def _test2_worker(self, duration):
+        """Slam the aim (right) stick full left / full right via km.trim."""
+        sent = errors = 0
+        end = time.monotonic() + duration
+        left = True
+        while time.monotonic() < end and not self.test_stop_evt.is_set():
+            try:
+                with self.io_lock:
+                    self.mk.trim(-32767 if left else 32767, 0)
+                sent += 1
+            except Exception as e:
+                errors += 1
+                self.root.after(0, self._tlog, f"ERROR sending: {e}")
+                if errors >= 5:
+                    self.root.after(0, self._tlog, "Too many errors — aborting.")
+                    break
+            left = not left
+            time.sleep(0.4)
+        try:
+            with self.io_lock:
+                self.mk.trim(0, 0)
+        except Exception as e:
+            errors += 1
+            self.root.after(0, self._tlog, f"ERROR clearing trim: {e}")
+        self.root.after(0, self._test_done, "trim cleared", sent, errors,
+                        self.test_stop_evt.is_set())
+
+    def _test_done(self, cleanup, sent, errors, stopped):
         self._test_running = False
-        self.test_start_btn.config(state="normal")
+        self.test1_btn.config(state="normal")
+        self.test2_btn.config(state="normal")
         self.test_stop_btn.config(state="disabled")
         outcome = "STOPPED by user" if stopped else "completed"
-        self._tlog(f"Test {outcome} — {sent} button commands sent, "
-                   f"{errors} error(s). LB/RB released.")
-        self.status.set(f"LB/RB test {outcome}: {sent} commands, {errors} errors.")
+        self._tlog(f"Test {outcome} — {sent} commands sent, {errors} error(s). "
+                   f"{cleanup}.")
+        self.status.set(f"Test {outcome}: {sent} commands, {errors} errors.")
 
     # -------------------------------------------------------------- Telemetry IO
     def _start_reader(self):
@@ -506,7 +572,13 @@ class MakcuGUI:
         if last:
             for k in ("lx", "ly", "rx", "ry"):
                 self.mon_vars[k].set(str(last.get(k, "—")))
-            self.mon_vars["b"].set(f"{last.get('b', 0):#06x}")
+            b = last.get("b", 0)
+            self.mon_vars["b"].set(f"{b:#06x}")
+            if self.btn_map:
+                names = [n for n, m in self.btn_map.items() if b & m]
+                self.mon_btn_names.set(" + ".join(names) if names else "—")
+            else:
+                self.mon_btn_names.set(f"{b:#06x}" if b else "—")
         self.root.after(60, self._drain_telemetry)
 
     def on_close(self):

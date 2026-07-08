@@ -41,6 +41,7 @@ latches, all controllable over the serial command port.
 |------|------|
 | `firmware/` | The two PlatformIO projects (Left = ESP-IDF, Right = Arduino + ESP-IDF usb_host), a guided flash tool, and prebuilt merged images in `firmware/bin/`. |
 | `accessibility/` | Python control layer: tabbed GUI, tremor monitor, serial wrapper + foot-pedal example. Start here for day-to-day use. |
+| `tools/` | Extras — `button_mapper.py` logs which telemetry bit each controller button sets, so the GUI Monitor can show button names. |
 | `docs/` | [ISSUE_REPORT.md](docs/ISSUE_REPORT.md) — the debugging write-up; [UPSTREAM_PACKAGE_README.md](docs/UPSTREAM_PACKAGE_README.md) — the original package README, kept as the technical reference for the passthrough internals. |
 | `FLASHING.md` | How to flash **both** MCUs, step by step. |
 

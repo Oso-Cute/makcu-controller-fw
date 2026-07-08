@@ -15,8 +15,9 @@ Run this after any Right MCU rebuild, before pushing the repo public.
    change when you move the sticks.
 4. **Open the Test tab:** `python accessibility/makcu_gui.py` → connect on
    the Device tab → switch to **Test**.
-5. **Run the LB/RB spam test** — leave duration at 4 seconds, click
-   **Start Test**.
+5. **Run both tests** — leave duration at 4 seconds; **Test 1** (LB/RB spam),
+   then **Test 2** (aim-stick sweep). Wiggle a stick slightly during each —
+   GIP pads only emit reports on change and injection rides on reports.
 6. **Confirm inputs register** on the console/PC (LB/RB flicker in the
    game's input display or a gamepad tester).
 7. **Confirm no errors** in the Test tab log — expect
