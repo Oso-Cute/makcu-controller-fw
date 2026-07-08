@@ -678,8 +678,8 @@ static inline void write_le16(uint8_t *p, int16_t v) {
 #define GIP_BTN_B      0x0020
 #define GIP_BTN_X      0x0040
 #define GIP_BTN_Y      0x0080
-#define GIP_BTN_LB     0x0100
-#define GIP_BTN_RB     0x0200
+#define GIP_BTN_LB     0x1000   // bit 12; 0x0100/0x0200 are DPad-Up/Down
+#define GIP_BTN_RB     0x2000   // bit 13  (verified on hardware, tools/inject_mapper.py)
 
 static uint16_t map_btn_gip(uint16_t generic) {
     uint16_t r = 0;
