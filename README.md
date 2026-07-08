@@ -1,8 +1,13 @@
 # MAKCM Controller Passthrough — community fix 
 
-This was 100% done with the help of claude.
-Short video walkthrough and test.
-https://youtu.be/0g_Uu8EqmU4
+This was 100% done with the help of Claude.
+
+## Demo video
+
+[![MAKCU Firmware Tools — Quick Intro](https://img.youtube.com/vi/0g_Uu8EqmU4/hqdefault.jpg)](https://youtu.be/0g_Uu8EqmU4)
+
+Quick walkthrough of the repo layout, example firmware/tools, and hardware
+validation flow.
 
 
 Code to support controller was unfinished for the MAKCM (dual-ESP32-S3 "MAKCU" board) **game
