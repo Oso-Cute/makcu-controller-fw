@@ -1,0 +1,428 @@
+"""
+makcu_gui.py — accessibility control panel for the MAKCM controller passthrough.
+
+A tabbed GUI over the same km.* command channel the CLI uses:
+  - Device : detect serial ports, flag the CH343 command port, connect + handshake
+  - Steady : tremor-damp filter (low-pass + deadzone) on the aim stick
+  - Trim   : constant stick offset to cancel drift
+  - Monitor: live stick/button readout, measure tremor, apply recommendations
+  - Buttons: latch/toggle holds (tap once = held) for one-handed / no-long-hold use
+
+Requires: pip install pyserial   (tkinter ships with Python on Windows)
+Run:      python makcu_gui.py
+"""
+
+import threading
+import queue
+import time
+import re
+import statistics
+
+import tkinter as tk
+from tkinter import ttk, messagebox
+
+import serial
+import serial.tools.list_ports
+
+from makcu_access import Makcu, BUTTONS
+
+
+KM_BAUD = 4_000_000
+CH343_VID = 0x1A86          # WCH CH343 — the MAKCM command (USB2) bridge
+ESP_VID = 0x303A            # Espressif native USB (a MAKCM MCU in some mode)
+
+
+def classify_port(p):
+    """Return a human hint for what a serial port probably is."""
+    vid = p.vid or 0
+    if vid == CH343_VID:
+        return "CH343 — MAKCM command port (use this)"
+    if vid == ESP_VID:
+        return "ESP32-S3 native USB (MCU, not the command port)"
+    return "other"
+
+
+class MakcuGUI:
+    def __init__(self, root):
+        self.root = root
+        root.title("MAKCM Accessibility Panel")
+        root.geometry("640x560")
+
+        self.mk = None                 # Makcu instance when connected
+        self.reader = None             # background telemetry reader thread
+        self.reader_stop = threading.Event()
+        self.tel_q = queue.Queue()     # parsed telemetry dicts -> UI
+        self.io_lock = threading.Lock()
+        self.latched = {}              # button name -> bool
+        self._measuring = False
+        self._measure_samples = []
+
+        self.nb = ttk.Notebook(root)
+        self.nb.pack(fill="both", expand=True, padx=8, pady=8)
+        self._build_device_tab()
+        self._build_steady_tab()
+        self._build_trim_tab()
+        self._build_monitor_tab()
+        self._build_buttons_tab()
+
+        self.status = tk.StringVar(value="Not connected.")
+        ttk.Label(root, textvariable=self.status, relief="sunken",
+                  anchor="w").pack(fill="x", side="bottom")
+
+        self.refresh_ports()
+        self.root.after(60, self._drain_telemetry)
+
+    # ------------------------------------------------------------------ Device
+    def _build_device_tab(self):
+        f = ttk.Frame(self.nb)
+        self.nb.add(f, text="Device")
+
+        ttk.Label(f, text="Detected serial ports:").pack(anchor="w", pady=(6, 2))
+        cols = ("port", "desc", "vidpid", "hint")
+        self.tree = ttk.Treeview(f, columns=cols, show="headings", height=7)
+        for c, w in zip(cols, (70, 190, 90, 250)):
+            self.tree.heading(c, text=c.upper())
+            self.tree.column(c, width=w, anchor="w")
+        self.tree.pack(fill="x", pady=4)
+
+        row = ttk.Frame(f)
+        row.pack(fill="x", pady=6)
+        ttk.Button(row, text="Refresh", command=self.refresh_ports).pack(side="left")
+        ttk.Button(row, text="Auto-detect CH343", command=self.autodetect).pack(side="left", padx=6)
+
+        row2 = ttk.Frame(f)
+        row2.pack(fill="x", pady=6)
+        ttk.Label(row2, text="Port:").pack(side="left")
+        self.port_var = tk.StringVar()
+        self.port_entry = ttk.Entry(row2, textvariable=self.port_var, width=14)
+        self.port_entry.pack(side="left", padx=6)
+        self.connect_btn = ttk.Button(row2, text="Connect", command=self.toggle_connect)
+        self.connect_btn.pack(side="left")
+        ttk.Button(row2, text="Handshake test", command=self.handshake).pack(side="left", padx=6)
+
+        self.dev_info = tk.StringVar(value="Select a port, then Connect.")
+        ttk.Label(f, textvariable=self.dev_info, foreground="#2a6",
+                  wraplength=580, justify="left").pack(anchor="w", pady=8)
+
+        self.tree.bind("<<TreeviewSelect>>", self._on_port_select)
+
+    def refresh_ports(self):
+        self.tree.delete(*self.tree.get_children())
+        best = None
+        for p in serial.tools.list_ports.comports():
+            hint = classify_port(p)
+            vidpid = f"{p.vid:04X}:{p.pid:04X}" if p.vid else "-"
+            self.tree.insert("", "end", values=(p.device, p.description, vidpid, hint))
+            if p.vid == CH343_VID and best is None:
+                best = p.device
+        if best and not self.port_var.get():
+            self.port_var.set(best)
+
+    def autodetect(self):
+        for p in serial.tools.list_ports.comports():
+            if p.vid == CH343_VID:
+                self.port_var.set(p.device)
+                self.dev_info.set(f"Found CH343 command port at {p.device}. Click Connect.")
+                return
+        self.dev_info.set("No CH343 (VID 1A86) found. Is USB2 plugged into this PC, "
+                          "and USB1 powering the Left MCU?")
+
+    def _on_port_select(self, _evt):
+        sel = self.tree.selection()
+        if sel:
+            self.port_var.set(self.tree.item(sel[0], "values")[0])
+
+    def toggle_connect(self):
+        if self.mk:
+            self.disconnect()
+        else:
+            self.connect()
+
+    def connect(self):
+        port = self.port_var.get().strip()
+        if not port:
+            messagebox.showwarning("No port", "Pick a port first (or Auto-detect).")
+            return
+        try:
+            self.mk = Makcu(port)
+        except Exception as e:
+            messagebox.showerror("Connect failed", str(e))
+            self.mk = None
+            return
+        self.connect_btn.config(text="Disconnect")
+        self.status.set(f"Connected on {port}.")
+        self.handshake()
+        self._start_reader()
+
+    def disconnect(self):
+        self._stop_reader()
+        if self.mk:
+            try:
+                self.mk.telem(False)
+                self.mk.release_all()
+                self.mk.ser.close()
+            except Exception:
+                pass
+        self.mk = None
+        self.connect_btn.config(text="Connect")
+        self.status.set("Disconnected.")
+
+    def handshake(self):
+        if not self.mk:
+            self.dev_info.set("Not connected.")
+            return
+        try:
+            with self.io_lock:
+                v = self.mk.version().strip()
+            if v.startswith("kmbox"):
+                self.dev_info.set(f"OK — firmware responded:\n{v}")
+                self.status.set("Handshake OK.")
+            else:
+                self.dev_info.set(f"Unexpected reply: {v!r}. Wrong port, or Left MCU "
+                                  "not powered (USB1) / not the CH343 port.")
+        except Exception as e:
+            self.dev_info.set(f"Handshake error: {e}")
+
+    def _slider(self, parent, label, var, lo, hi, cb):
+        """A labeled horizontal slider that calls cb() on release + shows value."""
+        row = ttk.Frame(parent)
+        row.pack(fill="x", pady=4)
+        ttk.Label(row, text=label, width=32, anchor="w").pack(side="left")
+        val = ttk.Label(row, textvariable=var, width=7)
+        val.pack(side="right")
+        s = ttk.Scale(row, from_=lo, to=hi, orient="horizontal",
+                      command=lambda v: var.set(int(float(v))))
+        s.set(var.get())
+        s.pack(side="left", fill="x", expand=True, padx=6)
+        s.bind("<ButtonRelease-1>", lambda _e: cb())
+        return s
+
+    # ------------------------------------------------------------------ Steady
+    def _build_steady_tab(self):
+        f = ttk.Frame(self.nb)
+        self.nb.add(f, text="Steady")
+        ttk.Label(f, text="Tremor-damping filter on the aim (right) stick.",
+                  wraplength=580).pack(anchor="w", pady=(8, 4))
+
+        self.steady_on = tk.BooleanVar(value=False)
+        ttk.Checkbutton(f, text="Enable steady filter", variable=self.steady_on,
+                        command=self._apply_steady).pack(anchor="w", pady=4)
+
+        self.smooth = tk.IntVar(value=70)
+        self._slider(f, "Smoothing (0=off, 99=max lag)", self.smooth, 0, 99,
+                     self._apply_steady)
+        self.dead = tk.IntVar(value=6000)
+        self._slider(f, "Deadzone (ignore shake below)", self.dead, 0, 20000,
+                     self._apply_steady)
+
+        ttk.Label(f, text="Tip: measure your shake in the Monitor tab first, then "
+                  "let it apply a recommended starting point.",
+                  wraplength=580, foreground="#666").pack(anchor="w", pady=10)
+
+    def _apply_steady(self, *_):
+        if not self.mk:
+            return
+        with self.io_lock:
+            self.mk.steady_smoothing(self.smooth.get())
+            self.mk.steady_deadzone(self.dead.get())
+            self.mk.steady(self.steady_on.get())
+        self.status.set(f"Steady {'ON' if self.steady_on.get() else 'off'} "
+                        f"smooth={self.smooth.get()} dead={self.dead.get()}")
+
+    # -------------------------------------------------------------------- Trim
+    def _build_trim_tab(self):
+        f = ttk.Frame(self.nb)
+        self.nb.add(f, text="Trim")
+        ttk.Label(f, text="Constant right-stick offset — cancel drift or add a gentle pull.",
+                  wraplength=580).pack(anchor="w", pady=(8, 6))
+        self.trim_x = tk.IntVar(value=0)
+        self.trim_y = tk.IntVar(value=0)
+        self._slider(f, "Trim X (left / right)", self.trim_x, -20000, 20000, self._apply_trim)
+        self._slider(f, "Trim Y (up / down)", self.trim_y, -20000, 20000, self._apply_trim)
+        row = ttk.Frame(f); row.pack(fill="x", pady=8)
+        ttk.Button(row, text="Apply", command=self._apply_trim).pack(side="left")
+        ttk.Button(row, text="Clear", command=self._clear_trim).pack(side="left", padx=6)
+
+    def _apply_trim(self, *_):
+        if not self.mk:
+            return
+        with self.io_lock:
+            self.mk.trim(self.trim_x.get(), self.trim_y.get())
+        self.status.set(f"Trim ({self.trim_x.get()},{self.trim_y.get()})")
+
+    def _clear_trim(self):
+        self.trim_x.set(0); self.trim_y.set(0)
+        self._apply_trim()
+
+    # ----------------------------------------------------------------- Monitor
+    def _build_monitor_tab(self):
+        f = ttk.Frame(self.nb)
+        self.nb.add(f, text="Monitor")
+        self.mon_live = tk.BooleanVar(value=False)
+        ttk.Checkbutton(f, text="Live telemetry", variable=self.mon_live,
+                        command=self._toggle_live).pack(anchor="w", pady=6)
+
+        grid = ttk.Frame(f); grid.pack(anchor="w", pady=4)
+        self.mon_vars = {}
+        for i, k in enumerate(("lx", "ly", "rx", "ry", "b")):
+            ttk.Label(grid, text=k.upper()+":", width=4).grid(row=i, column=0, sticky="e")
+            v = tk.StringVar(value="—")
+            self.mon_vars[k] = v
+            ttk.Label(grid, textvariable=v, width=10, anchor="w",
+                      font=("Consolas", 11)).grid(row=i, column=1, sticky="w")
+
+        ttk.Button(f, text="Measure shake (5s) + recommend",
+                   command=self.measure_shake).pack(anchor="w", pady=10)
+        self.mon_result = tk.StringVar(value="")
+        ttk.Label(f, textvariable=self.mon_result, wraplength=580,
+                  justify="left", foreground="#2a6").pack(anchor="w")
+        self._last_tel = {}
+
+    def _toggle_live(self):
+        if not self.mk:
+            self.mon_live.set(False)
+            return
+        with self.io_lock:
+            self.mk.telem(self.mon_live.get())
+
+    def measure_shake(self):
+        if not self.mk:
+            messagebox.showwarning("Not connected", "Connect first.")
+            return
+        self.mon_result.set("Hold the stick as steady as you can… collecting 5s.")
+        with self.io_lock:
+            self.mk.telem(True)
+        self._measure_samples = []
+        self._measuring = True
+        # drain loop collects into _measure_samples; stop + compute after 5s
+        self.root.after(5000, self._finish_measure)
+
+    def _finish_measure(self):
+        self._measuring = False
+        samples = list(self._measure_samples)
+        if not self.mon_live.get():
+            with self.io_lock:
+                self.mk.telem(False)
+        if not samples:
+            self.mon_result.set("No telemetry — is the controller plugged in and streaming?")
+            return
+        def stat(axis):
+            v = [s[axis] for s in samples]
+            return max(v) - min(v), statistics.fmean(v)
+        rxp, rxm = stat("rx"); ryp, rym = stat("ry")
+        shake = max(rxp, ryp)
+        dead = min(20000, int(shake * 0.6))
+        alpha = 60 if shake < 4000 else 75 if shake < 12000 else 85
+        tx, ty = round(rxm), round(rym)
+        msg = (f"Shake peak-to-peak: X={rxp}  Y={ryp}\n"
+               f"Applied → smoothing={alpha}, deadzone={dead}")
+        self.smooth.set(alpha)
+        self.dead.set(dead)
+        if abs(tx) > 1500 or abs(ty) > 1500:
+            msg += f"\nDrift detected ({tx:+d},{ty:+d}) → trim set to {-tx},{-ty}"
+            self.trim_x.set(-tx)
+            self.trim_y.set(-ty)
+        self.mon_result.set(msg)
+
+    # ----------------------------------------------------------------- Buttons
+    def _build_buttons_tab(self):
+        f = ttk.Frame(self.nb)
+        self.nb.add(f, text="Buttons")
+        ttk.Label(f, text="Latch toggles — tap once to HOLD the button, tap again to release. "
+                  "(For one-handed / can't-hold-long use.)",
+                  wraplength=580).pack(anchor="w", pady=(8, 8))
+        grid = ttk.Frame(f); grid.pack(anchor="w")
+        self.btn_state = {}
+        names = list(BUTTONS.keys())
+        for i, name in enumerate(names):
+            var = tk.BooleanVar(value=False)
+            self.btn_state[name] = var
+            cb = ttk.Checkbutton(grid, text=name, variable=var,
+                                 command=lambda n=name: self._toggle_btn(n))
+            cb.grid(row=i // 3, column=i % 3, sticky="w", padx=10, pady=6)
+        ttk.Button(f, text="Release all", command=self._release_all_btns).pack(anchor="w", pady=10)
+
+    def _toggle_btn(self, name):
+        if not self.mk:
+            self.btn_state[name].set(False)
+            return
+        with self.io_lock:
+            if self.btn_state[name].get():
+                self.mk.hold(name)
+            else:
+                self.mk.release(name)
+        self.status.set(f"{name} {'HELD' if self.btn_state[name].get() else 'released'}")
+
+    def _release_all_btns(self):
+        if self.mk:
+            with self.io_lock:
+                self.mk.release_all()
+        for v in self.btn_state.values():
+            v.set(False)
+
+    # -------------------------------------------------------------- Telemetry IO
+    def _start_reader(self):
+        self.reader_stop.clear()
+        self.reader = threading.Thread(target=self._reader_loop, daemon=True)
+        self.reader.start()
+
+    def _stop_reader(self):
+        self.reader_stop.set()
+        self.reader = None
+
+    def _reader_loop(self):
+        buf = b""
+        while not self.reader_stop.is_set() and self.mk:
+            try:
+                buf += self.mk.ser.read(256)
+            except Exception:
+                break
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                s = line.decode("ascii", "replace").strip()
+                if not s.startswith("KMS "):
+                    continue
+                d = {}
+                for tok in s[4:].split():
+                    k, _, val = tok.partition("=")
+                    try:
+                        d[k] = int(val, 16) if k == "b" else int(val)
+                    except ValueError:
+                        pass
+                if {"lx", "ly", "rx", "ry"} <= d.keys():
+                    self.tel_q.put(d)
+
+    def _drain_telemetry(self):
+        last = None
+        try:
+            while True:
+                d = self.tel_q.get_nowait()
+                last = d
+                if self._measuring:
+                    self._measure_samples.append(d)
+        except queue.Empty:
+            pass
+        if last:
+            for k in ("lx", "ly", "rx", "ry"):
+                self.mon_vars[k].set(str(last.get(k, "—")))
+            self.mon_vars["b"].set(f"{last.get('b', 0):#06x}")
+        self.root.after(60, self._drain_telemetry)
+
+    def on_close(self):
+        self.disconnect()
+        self.root.destroy()
+
+
+def main():
+    root = tk.Tk()
+    try:
+        ttk.Style().theme_use("clam")
+    except Exception:
+        pass
+    app = MakcuGUI(root)
+    root.protocol("WM_DELETE_WINDOW", app.on_close)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()

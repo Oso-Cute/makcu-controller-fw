@@ -1,0 +1,30 @@
+# Disable every built-in TinyUSB class driver so they don't pre-reserve EP
+# addresses that would collide with the real controller's descriptors.
+# Only our custom class driver (via usbd_app_driver_get_cb) is active.
+CONFIG_TINYUSB_CDC_ENABLED=n
+CONFIG_TINYUSB_MSC_ENABLED=n
+CONFIG_TINYUSB_HID_ENABLED=n
+CONFIG_TINYUSB_MIDI_ENABLED=n
+CONFIG_TINYUSB_VENDOR_ENABLED=n
+CONFIG_TINYUSB_DFU_RT_ENABLED=n
+CONFIG_TINYUSB_DFU_ENABLED=n
+
+# Full-speed for the ESP32-S3 USB-OTG peripheral.
+CONFIG_TINYUSB_RHPORT_HS=n
+
+# Silence the boot ROM log so the diag LED is the only on-board signal.
+CONFIG_BOOTLOADER_LOG_LEVEL_WARN=y
+CONFIG_ESP_CONSOLE_NONE=y
+
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# Pin TinyUSB to CPU1 so it can't starve the esp_timer task (CPU0) that
+# drives km_housekeep_cb (8 ms cadence) and the IPC/KM UART tasks.
+CONFIG_TINYUSB_TASK_AFFINITY_NO_AFFINITY=n
+CONFIG_TINYUSB_TASK_AFFINITY_CPU1=y
+
+# 1 kHz FreeRTOS tick. Drops UART task wake floor from 10 ms (100 Hz
+# default) to 1 ms — was the dominant variable latency in km.move → stick
+# output (~12 ms → ~3 ms). All vTaskDelay sites use pdMS_TO_TICKS so they
+# auto-scale.
+CONFIG_FREERTOS_HZ=1000

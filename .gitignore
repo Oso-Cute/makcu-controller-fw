@@ -1,0 +1,16 @@
+# PlatformIO build output + downloaded deps
+.pio/
+**/.pio/
+**/managed_components/
+**/dependencies.lock
+firmware/MAKCM_ESP32s3_Pass_Left_IDF/sdkconfig.LEFT_IDF
+
+# Python
+*.pyc
+__pycache__/
+
+# Local user config (auto-created with defaults on first run)
+accessibility/config.json
+
+# Vendor stock binaries kept locally for rollback (not distributed)
+firmware/bin/stock/
