@@ -109,6 +109,9 @@ class FlashWizard:
         btns.pack(fill="x", side="bottom")
         self.action_btn = ttk.Button(btns, text="", command=self.on_action)
         self.action_btn.pack(side="left")
+        self.skip_btn = ttk.Button(btns, text="Skip ▶", command=self.on_skip,
+                                   state="disabled")
+        self.skip_btn.pack(side="left", padx=6)
         self.next_btn = ttk.Button(btns, text="Next ▶", command=self.on_next,
                                    state="disabled")
         self.next_btn.pack(side="right")
@@ -136,6 +139,8 @@ class FlashWizard:
         self.next_btn.config(state="disabled")
         self.back_btn.config(state="normal" if self.step > 0 and not self.busy
                              else "disabled")
+        self.skip_btn.config(state="normal" if self.step in (1, 2) and not self.busy
+                             else "disabled")
         self.detect.config(text="")
         if self.step == 0:
             self.instr.config(text=(
@@ -150,14 +155,16 @@ class FlashWizard:
                 "1) HOLD the button next to USB1 (left).\n"
                 "2) While holding, plug USB1 into this PC.\n"
                 "3) Release. Wait for it to be detected below, then click "
-                "‘Flash Left’."))
+                "‘Flash Left’.\n\n"
+                "Already up to date on this side? Click ‘Skip ▶’."))
             self.action_btn.config(text="Flash Left", state="disabled")
         elif self.step == 2:
             self.instr.config(text=(
                 "Left done. Now the RIGHT MCU.\n"
                 "1) Unplug USB1.\n"
                 "2) Plug USB3 (right) into this PC — no button needed.\n"
-                "3) Wait for detection below, then click ‘Flash Right’."))
+                "3) Wait for detection below, then click ‘Flash Right’.\n\n"
+                "Already up to date on this side? Click ‘Skip ▶’."))
             self.action_btn.config(text="Flash Right", state="disabled")
         elif self.step == 3:
             self.instr.config(text=(
@@ -263,6 +270,7 @@ class FlashWizard:
         self.busy = True
         self.action_btn.config(state="disabled")
         self.back_btn.config(state="disabled")
+        self.skip_btn.config(state="disabled")
         self._log(f"\n=== Flashing {name} on {port} ===")
         cmd = self.esptool + ["--chip", "esp32s3", "--port", port,
                               "--baud", FLASH_BAUD, "write_flash", "0x0", binfile]
@@ -288,6 +296,7 @@ class FlashWizard:
     def _flash_done(self, name, ok):
         self.busy = False
         self.back_btn.config(state="normal")
+        self.skip_btn.config(state="normal" if self.step in (1, 2) else "disabled")
         if ok:
             self._log(f"=== {name} flashed OK. "
                       f"(‘can not exit download mode’ / Error 1 is normal.) ===")
@@ -296,6 +305,15 @@ class FlashWizard:
         else:
             self._log(f"=== {name} flash did NOT verify. Check the cable/port and retry. ===")
             self.action_btn.config(state="normal")
+
+    def on_skip(self):
+        """Skip a flash step (e.g. that MCU already runs the current image)."""
+        if self.busy or self.step not in (1, 2):
+            return
+        name = "Left" if self.step == 1 else "Right"
+        self._log(f"{name} flash SKIPPED — that MCU keeps whatever it is running.")
+        self.step += 1
+        self.render()
 
     def on_next(self):
         if self.step < len(self.STEPS) - 1:
