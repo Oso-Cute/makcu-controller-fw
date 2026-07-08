@@ -29,6 +29,9 @@ Tabs:
 - **Monitor** — live stick/button readout; *Measure shake (5s)* auto-fills the
   recommended steady + trim values.
 - **Buttons** — latch toggles: tap once = button held, tap again = release.
+- **Test** — manual hardware validation: spams LB/RB for a few seconds so you
+  can confirm inputs reach the console/PC. Only runs when you click Start;
+  Stop button interrupts immediately.
 
 > The command port only responds when USB1 (Left MCU) is powered and USB2
 > (CH343) is in this PC. For the controller pipeline to feed real data, both

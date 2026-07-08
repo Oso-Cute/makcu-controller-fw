@@ -7,6 +7,7 @@ A tabbed GUI over the same km.* command channel the CLI uses:
   - Trim   : constant stick offset to cancel drift
   - Monitor: live stick/button readout, measure tremor, apply recommendations
   - Buttons: latch/toggle holds (tap once = held) for one-handed / no-long-hold use
+  - Test   : manual hardware validation — LB/RB spam test (never runs on its own)
 
 Requires: pip install pyserial   (tkinter ships with Python on Windows)
 Run:      python makcu_gui.py
@@ -64,6 +65,7 @@ class MakcuGUI:
         self._build_trim_tab()
         self._build_monitor_tab()
         self._build_buttons_tab()
+        self._build_test_tab()
 
         self.status = tk.StringVar(value="Not connected.")
         ttk.Label(root, textvariable=self.status, relief="sunken",
@@ -359,6 +361,105 @@ class MakcuGUI:
                 self.mk.release_all()
         for v in self.btn_state.values():
             v.set(False)
+
+    # -------------------------------------------------------------------- Test
+    def _build_test_tab(self):
+        f = ttk.Frame(self.nb)
+        self.nb.add(f, text="Test")
+        ttk.Label(f, text="Manual hardware validation. Spams LB + RB press/release "
+                  "for the chosen duration so you can confirm inputs reach the "
+                  "console/PC. Runs ONLY when you click Start.",
+                  wraplength=580, justify="left").pack(anchor="w", pady=(8, 6))
+
+        row = ttk.Frame(f)
+        row.pack(fill="x", pady=4)
+        ttk.Label(row, text="Duration (s):").pack(side="left")
+        self.test_dur = tk.StringVar(value="4")
+        ttk.Entry(row, textvariable=self.test_dur, width=6).pack(side="left", padx=6)
+        self.test_start_btn = ttk.Button(row, text="Start Test", command=self._start_test)
+        self.test_start_btn.pack(side="left", padx=6)
+        self.test_stop_btn = ttk.Button(row, text="STOP", command=self._stop_test,
+                                        state="disabled")
+        self.test_stop_btn.pack(side="left")
+
+        self.test_log = tk.Text(f, height=12, wrap="word", font=("Consolas", 9),
+                                state="disabled")
+        self.test_log.pack(fill="both", expand=True, pady=6)
+
+        self.test_stop_evt = threading.Event()
+        self._test_running = False
+
+    def _tlog(self, msg):
+        self.test_log.configure(state="normal")
+        self.test_log.insert("end", msg + "\n")
+        self.test_log.see("end")
+        self.test_log.configure(state="disabled")
+
+    def _start_test(self):
+        if self._test_running:
+            return
+        if not self.mk:
+            self._tlog("ERROR: not connected — connect on the Device tab first.")
+            return
+        try:
+            duration = float(self.test_dur.get())
+            if not 0 < duration <= 60:
+                raise ValueError
+        except ValueError:
+            self._tlog("ERROR: duration must be a number between 0 and 60 seconds.")
+            return
+        self._test_running = True
+        self.test_stop_evt.clear()
+        self.test_start_btn.config(state="disabled")
+        self.test_stop_btn.config(state="normal")
+        self._tlog(f"Test started — spamming LB/RB for {duration:g}s…")
+        threading.Thread(target=self._test_worker, args=(duration,),
+                         daemon=True).start()
+
+    def _stop_test(self):
+        self.test_stop_evt.set()
+
+    def _test_worker(self, duration):
+        sent = errors = 0
+        end = time.monotonic() + duration
+        pressed = False
+        while time.monotonic() < end and not self.test_stop_evt.is_set():
+            pressed = not pressed
+            try:
+                with self.io_lock:
+                    if pressed:
+                        self.mk.hold("LB")
+                        self.mk.hold("RB")
+                    else:
+                        self.mk.release("LB")
+                        self.mk.release("RB")
+                sent += 2
+            except Exception as e:
+                errors += 1
+                self.root.after(0, self._tlog, f"ERROR sending: {e}")
+                if errors >= 5:
+                    self.root.after(0, self._tlog, "Too many errors — aborting.")
+                    break
+            time.sleep(0.05)
+        # always leave both buttons released
+        try:
+            with self.io_lock:
+                self.mk.release("LB")
+                self.mk.release("RB")
+        except Exception as e:
+            errors += 1
+            self.root.after(0, self._tlog, f"ERROR on final release: {e}")
+        stopped = self.test_stop_evt.is_set()
+        self.root.after(0, self._test_done, sent, errors, stopped)
+
+    def _test_done(self, sent, errors, stopped):
+        self._test_running = False
+        self.test_start_btn.config(state="normal")
+        self.test_stop_btn.config(state="disabled")
+        outcome = "STOPPED by user" if stopped else "completed"
+        self._tlog(f"Test {outcome} — {sent} button commands sent, "
+                   f"{errors} error(s). LB/RB released.")
+        self.status.set(f"LB/RB test {outcome}: {sent} commands, {errors} errors.")
 
     # -------------------------------------------------------------- Telemetry IO
     def _start_reader(self):
