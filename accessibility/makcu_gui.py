@@ -174,8 +174,16 @@ class MakcuGUI:
             self.dev_info.set("Not connected.")
             return
         try:
+            # Pause the telemetry reader — it reads the same port and would
+            # otherwise swallow the version reply (the button then shows junk).
+            reader_was_running = self.reader is not None
+            if reader_was_running:
+                self._stop_reader()
+                time.sleep(0.15)
             with self.io_lock:
                 v = self.mk.version().strip()
+            if reader_was_running:
+                self._start_reader()
             if v.startswith("kmbox"):
                 self.dev_info.set(f"OK — firmware responded:\n{v}")
                 self.status.set("Handshake OK.")
