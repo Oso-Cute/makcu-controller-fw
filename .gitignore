@@ -8,6 +8,10 @@ firmware/MAKCM_ESP32s3_Pass_Left_IDF/sdkconfig.LEFT_IDF
 # Python
 *.pyc
 __pycache__/
+.venv/
+venv/
+.env
+*.log
 
 # Local user config (auto-created with defaults on first run)
 accessibility/config.json

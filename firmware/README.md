@@ -1,5 +1,10 @@
 # Firmware
 
+> **Licensing note:** everything under this folder derives from the upstream
+> `MAKCM_Pass_Package` (reference/example material, no license shipped) plus
+> this repo's modifications. It is **not** covered by the root MIT LICENSE —
+> see [../docs/legal/THIRD_PARTY_NOTICES.md](../docs/legal/THIRD_PARTY_NOTICES.md).
+
 Two PlatformIO projects — one per MCU. **Both must be flashed** (they share a
 custom IPC protocol); see the repo root [FLASHING.md](../FLASHING.md).
 
