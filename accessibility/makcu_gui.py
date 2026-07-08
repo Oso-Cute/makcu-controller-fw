@@ -409,7 +409,8 @@ class MakcuGUI:
                                         state="disabled")
         self.test_stop_btn.pack(side="left", padx=6)
 
-        ttk.Label(f, text="Test 1: presses+releases LB and RB (~3×/s). "
+        ttk.Label(f, text="Test 1: presses+releases LB and RB (0.6 s held, "
+                  "~1×/s — console-visible timing). "
                   "Test 2: slams the aim (right) stick full LEFT / full RIGHT "
                   "every 0.4 s via km.trim. (The firmware can only inject the "
                   "right stick — left-stick injection doesn't exist in "
@@ -458,7 +459,8 @@ class MakcuGUI:
         self.test_stop_evt.set()
 
     def _test1_worker(self, duration):
-        """Press+release LB and RB about three times per second."""
+        """Press LB+RB for 0.6 s, release for 0.4 s — long enough for the
+        console to register each press (short taps can fall between reports)."""
         sent = errors = 0
         end = time.monotonic() + duration
         pressed = False
@@ -479,7 +481,7 @@ class MakcuGUI:
                 if errors >= 5:
                     self.root.after(0, self._tlog, "Too many errors — aborting.")
                     break
-            time.sleep(0.15)
+            time.sleep(0.6 if pressed else 0.4)
         try:
             with self.io_lock:
                 self.mk.release("LB")
