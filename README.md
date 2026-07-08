@@ -2,7 +2,7 @@
 
 This was 100% done with the help of Claude.
 
-💬 **Community:** [Join the Discord](https://discord.gg/hPFZbJwY2Z) — come share
+💬 **Community:** [Join The S&Box Discord](https://discord.gg/hPFZbJwY2Z) — come share
 what you're building with Titan2 and makcu/controller.
 
 ## Demo video
