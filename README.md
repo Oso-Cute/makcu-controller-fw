@@ -13,7 +13,8 @@ that the Python tools use to add assistance.
 > **Not an official MAKCU project.** This is based on the
 > `MAKCM_Pass_Package` example firmware released by the MAKCM/MAKCU author,
 > which was published explicitly as unfinished example code. See
-> [NOTICE.md](NOTICE.md) for credits and licensing status.
+> [docs/legal/THIRD_PARTY_NOTICES.md](docs/legal/THIRD_PARTY_NOTICES.md)
+> for credits and licensing status.
 
 ## What was fixed
 
@@ -98,6 +99,22 @@ somewhere safe; `FLASHING.md` documents where to put them
 itself is in mask ROM and survives any app flash — worst case you re-flash
 over the same ports.
 
+## License
+
+This project's original code is licensed under the MIT License. See
+[`LICENSE`](LICENSE).
+
+This code is provided as example/reference material with no warranty and no
+support obligation. Use it at your own risk. See
+[`docs/legal/DISCLAIMER.md`](docs/legal/DISCLAIMER.md).
+
+Third-party materials keep their original licenses — in particular, the
+firmware base under `firmware/` derives from the upstream
+`MAKCM_Pass_Package`, which shipped without a license and is treated as
+reference material until upstream clarifies. See
+[`docs/legal/THIRD_PARTY_NOTICES.md`](docs/legal/THIRD_PARTY_NOTICES.md) and
+the plain-English [`docs/legal/LICENSE_GUIDE.md`](docs/legal/LICENSE_GUIDE.md).
+
 ## ⚠️ Disclaimer
 
 Flashing firmware can leave your device non-functional if it goes wrong, and
@@ -105,7 +122,8 @@ this project is provided **as-is, with no warranty — use at your own risk**.
 It was tested on exactly one hardware setup. It is not an official MAKCU
 release and is not endorsed by the original author unless upstream says
 otherwise. Console behavior (including whether a console tolerates a
-passthrough device) is your responsibility to verify.
+passthrough device) is your responsibility to verify. Full version:
+[`docs/legal/DISCLAIMER.md`](docs/legal/DISCLAIMER.md).
 
 ## Credits
 
@@ -117,4 +135,5 @@ passthrough device) is your responsibility to verify.
   [xone](https://github.com/medusalix/xone) driver and TheNathannator's GIP
   protocol notes.
 
-See [NOTICE.md](NOTICE.md) for the licensing situation.
+See [docs/legal/THIRD_PARTY_NOTICES.md](docs/legal/THIRD_PARTY_NOTICES.md)
+for the full licensing situation.
