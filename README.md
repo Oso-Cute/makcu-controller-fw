@@ -1,10 +1,8 @@
-# MAKCM Controller Passthrough — community fix + accessibility tools
+# MAKCM Controller Passthrough — community fix 
 
 A community cleanup of the MAKCM (dual-ESP32-S3 "MAKCU" board) **game
 controller passthrough firmware**, with the fixes needed to make it actually
-work end-to-end, plus a small Python **accessibility layer** on top
-(hold-to-toggle buttons, tremor damping, stick-drift trim, foot-pedal
-support).
+work end-to-end, plus a small Python gui for quick testing.
 
 The device sits between a real controller and the target console/PC, passes
 the controller through transparently, and exposes a serial command channel
