@@ -81,6 +81,9 @@ def analyze(lines):
         "desc_fail": False,
         "device_gone": 0,
         "kms_n": [],              # telemetry n= counter samples
+        "kms_b0": {},             # telemetry b0 -> count (raw report first byte)
+        "kms_len": {},            # telemetry len -> count (raw report length)
+        "kms_moved": False,       # any nonzero stick value seen
         "r_lines": 0,
     }
     for ln in lines:
@@ -88,6 +91,16 @@ def analyze(lines):
             m = re.search(r"\bn=(\d+)", ln)
             if m:
                 facts["kms_n"].append(int(m.group(1)))
+            m = re.search(r"\bb0=([0-9a-fA-F]{2})", ln)
+            if m:
+                b0 = m.group(1).lower()
+                facts["kms_b0"][b0] = facts["kms_b0"].get(b0, 0) + 1
+            m = re.search(r"\blen=(\d+)", ln)
+            if m:
+                facts["kms_len"][m.group(1)] = facts["kms_len"].get(m.group(1), 0) + 1
+            m = re.search(r"lx=(-?\d+) ly=(-?\d+) rx=(-?\d+) ry=(-?\d+)", ln)
+            if m and any(v != "0" for v in m.groups()):
+                facts["kms_moved"] = True
             continue
         if not ln.startswith("[R] "):
             if "DEVICE_GONE" in ln:
@@ -133,6 +146,40 @@ def verdict(facts, debug_ack, telem_seconds):
     d = []
     kms = facts["kms_n"]
     kms_delta = (kms[-1] - kms[0]) if len(kms) >= 2 else 0
+    rate = kms_delta / telem_seconds if telem_seconds else 0
+
+    # Moving telemetry is the strongest evidence there is: input reports are
+    # crossing controller -> Right -> IPC -> Left right now. Judge their
+    # format BEFORE any conclusion based on missing [R] log lines (an old
+    # Left build produces none, but telemetry still tells the truth).
+    if kms_delta > 0:
+        dominant_b0 = (max(facts["kms_b0"], key=facts["kms_b0"].get)
+                       if facts["kms_b0"] else None)
+        if dominant_b0 is not None and dominant_b0 != "20":
+            lens = ", ".join(sorted(facts["kms_len"])) or "?"
+            det = [f"~{rate:.0f} reports/s reach the Left MCU, but their first byte is",
+                   f"0x{dominant_b0} (length {lens}) — GIP input reports start with 0x20.",
+                   "The controller is not speaking GIP right now, so the console",
+                   "ignores everything it sends.",
+                   "Most likely: the controller is in the wrong MODE. Put it in",
+                   "Xbox/GIP mode (mode switch or vendor button combo — e.g. GameSir",
+                   "pads have a PC/'esports' mode with a different report format).",
+                   "A vendor-app firmware update changing the default mode also fits."]
+            if facts["r_lines"] == 0:
+                det.append("(For deeper GIP logs, reflash the Left MCU with the current")
+                det.append("repo build so km.debug(1) works, and rerun this tool.)")
+            return ("Board pipeline WORKS — controller streams non-GIP reports "
+                    "(wrong controller mode).", det)
+        det = ["Input reports in GIP format reach the Left MCU."]
+        if not facts["kms_moved"]:
+            det.append("NOTE: sticks read 0 the whole capture — if you were moving them,")
+            det.append("rerun and wiggle sticks during the capture window.")
+        det += ["The console only inspects the device when USB1 attaches. Fix order:",
+                "1) leave everything else connected, 2) unplug USB1, wait 5 s,",
+                "3) replug USB1 LAST. Also verify topology: PC->USB2, console->USB1,",
+                "controller->USB3 (left/right swapped = silent failure)."]
+        return ("Board pipeline is HEALTHY — controller input reaches the Left MCU"
+                f" (~{rate:.0f} reports/s). The break is on the CONSOLE side.", det)
 
     if not debug_ack and facts["r_lines"] == 0:
         return ("Left firmware predates km.debug() — no diagnostics available.",
@@ -182,20 +229,12 @@ def verdict(facts, debug_ack, telem_seconds):
         det.append("if it persists, attach the .log to a GitHub issue.")
         return ("Break is on the RIGHT side: controller present, no input reports.", det)
 
-    # Input reports flow. Is telemetry moving too (Right -> IPC -> Left OK)?
-    if kms_delta == 0 and telem_seconds > 0:
-        return ("Controller streams input, but the LEFT MCU shows no telemetry.",
-                ["Right MCU receives input reports fine, telemetry counter never moved —",
-                 "the IPC EP_IN path or the Left firmware is not processing them.",
-                 "Reflash the LEFT MCU with the current repo build and power-cycle."])
-
-    rate = kms_delta / telem_seconds if telem_seconds else 0
-    return ("Board pipeline is HEALTHY — controller input reaches the Left MCU"
-            f" (~{rate:.0f} reports/s). The break is on the CONSOLE side.",
-            ["The console only inspects the device when USB1 attaches. Fix order:",
-             "1) leave everything else connected, 2) unplug USB1, wait 5 s,",
-             "3) replug USB1 LAST. Also verify topology: PC->USB2, console->USB1,",
-             "controller->USB3 (left/right swapped = silent failure)."])
+    # [R] logs show GIP input reports arriving on Right, but the telemetry
+    # counter never moved — the IPC EP_IN path or Left isn't processing them.
+    return ("Controller streams input, but the LEFT MCU shows no telemetry.",
+            ["Right MCU receives input reports fine, telemetry counter never moved —",
+             "the IPC EP_IN path or the Left firmware is not processing them.",
+             "Reflash the LEFT MCU with the current repo build and power-cycle."])
 
 
 def main():
