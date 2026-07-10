@@ -39,8 +39,8 @@ RIGHT_BIN = os.path.join(_DEFAULT_IMG_DIR, "MERGED_right.bin")
 # USB identities
 CH343_VID = 0x1A86            # middle command port (USB2)
 ESP_VID = 0x303A
-LEFT_DL_PID = 0x0009          # Left MCU in download mode (serial/JTAG)
-RIGHT_PID = 0x1001           # Right MCU native USB (flashable directly)
+DL_PID = 0x0009               # ROM download mode (BOOT held) — either MCU
+RIGHT_PID = 0x1001            # Right MCU USB-Serial/JTAG (flashable directly)
 
 KM_BAUD = 4_000_000
 FLASH_BAUD = "921600"
@@ -162,8 +162,12 @@ class FlashWizard:
             self.instr.config(text=(
                 "Left done. Now the RIGHT MCU.\n"
                 "1) Unplug USB1.\n"
-                "2) Plug USB3 (right) into this PC — no button needed.\n"
-                "3) Wait for detection below, then click ‘Flash Right’.\n\n"
+                "2) Plug USB3 (right) into this PC.\n"
+                "3) If it is NOT detected within a few seconds: unplug USB3, "
+                "HOLD the BOOT button next to USB3, plug it back in, release. "
+                "(Needed when the Right MCU is already running USB-host "
+                "firmware — the port stays silent otherwise.)\n"
+                "4) Wait for detection below, then click ‘Flash Right’.\n\n"
                 "Already up to date on this side? Click ‘Skip ▶’."))
             self.action_btn.config(text="Flash Right", state="disabled")
         elif self.step == 3:
@@ -181,7 +185,7 @@ class FlashWizard:
         """Auto-detect the relevant port for flashing steps."""
         if not self.busy:
             if self.step == 1:
-                port = find_port(ESP_VID, LEFT_DL_PID)
+                port = find_port(ESP_VID, DL_PID)
                 if port:
                     self.detect.config(text=f"Left detected in download mode on {port}")
                     self.action_btn.config(state="normal")
@@ -191,12 +195,22 @@ class FlashWizard:
                     self.action_btn.config(state="disabled")
             elif self.step == 2:
                 port = find_port(ESP_VID, RIGHT_PID)
+                dl_port = None if port else find_port(ESP_VID, DL_PID)
                 if port:
                     self.detect.config(text=f"Right detected on {port}")
                     self.action_btn.config(state="normal")
                     self._right_port = port
+                elif dl_port:
+                    self.detect.config(
+                        text=f"ESP32 in download mode on {dl_port} — if USB1 is "
+                             "unplugged this is the Right MCU; click Flash Right")
+                    self.action_btn.config(state="normal")
+                    self._right_port = dl_port
                 else:
-                    self.detect.config(text="Waiting for Right (plug USB3 into PC)…")
+                    self.detect.config(
+                        text="Waiting for Right (plug USB3 into PC; if nothing "
+                             "appears, hold the BOOT button next to USB3 while "
+                             "plugging in)…")
                     self.action_btn.config(state="disabled")
         self.root.after(1000, self._poll)
 

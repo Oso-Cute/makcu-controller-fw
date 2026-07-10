@@ -15,7 +15,7 @@ unable to boot; the controller then blinks forever in its announce loop.)
 |------|------|----------|
 | **USB1 (left)** | Left MCU — USB device to the console/PC | Hold the USB1 boot button while plugging into the PC → appears as `303A:0009` (e.g. COM3) |
 | **USB2 (middle)** | CH343 USB-serial bridge — command port (VID `1A86`) | **Do not flash over this port** — auto-reset isn't wired |
-| **USB3 (right)** | Right MCU — USB host for the real controller | Just plug into the PC → appears as `303A:1001`, no button needed |
+| **USB3 (right)** | Right MCU — USB host for the real controller | Plug into the PC → appears as `303A:1001`. **Not detected?** Hold the BOOT button next to USB3 while plugging in → appears as `303A:0009` |
 
 Flash with only one MCU plugged into the PC at a time so you can't target the
 wrong port.
@@ -74,7 +74,12 @@ pio run -d firmware/MAKCM_ESP32s3_Pass_Left_IDF -e LEFT_IDF -t upload --upload-p
 
 - **Left:** hold the boot button next to USB1 while plugging USB1 into the
   PC, then release. A `303A:0009` COM port appears.
-- **Right:** none needed — plug USB3 in and it's flashable directly.
+- **Right:** usually plug USB3 in and it appears as `303A:1001` directly.
+  **If nothing shows up in Device Manager** — common once the Right MCU is
+  running USB-host firmware, because the host stack takes over the USB port
+  and the PC can no longer enumerate it — hold the BOOT button next to USB3
+  while plugging USB3 into the PC, then release. It then appears as a
+  `303A:0009` COM port and flashes exactly the same way.
 - If an upload fails to sync ("Connecting….." then timeout): hold **BOOT**,
   tap **RESET/EN**, release **BOOT**, retry. Lower speed with
   `--upload-speed 115200` if it still fails.
@@ -113,7 +118,15 @@ can't reboot the chip over that port. Power-cycle to boot the new firmware.
 
 - Wrong COM port — check Device Manager, unplug the other MCU.
 - Not in download mode — do the BOOT+RESET sequence above.
+- **Right MCU (USB3) not detected at all** — hold the BOOT button next to
+  USB3 while plugging in (see above). Also make sure the cable carries data
+  (charge-only cables enumerate nothing).
 - CH343 driver missing — install the WCH CH343 Windows driver.
+- Note on the MAKCU **AIO tool**: when it says "connected", it has usually
+  auto-connected to the **middle (CH343) command port**, not the Right MCU —
+  that is a different port and does not mean the Right MCU is visible.
+  Flashing this board over the middle port does not work (no auto-reset
+  wiring); use USB1/USB3 as described here.
 
 ## Rollback to vendor stock
 
