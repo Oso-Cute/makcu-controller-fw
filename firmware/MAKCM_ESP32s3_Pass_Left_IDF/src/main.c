@@ -259,7 +259,17 @@ static void led_task(void *arg) {
 static void main_task(void *arg) {
     (void)arg;
     while (1) {
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        // Wake at least once a second. Right announces DEVICE_READY exactly
+        // once, at enumeration — if this MCU was rebooting (reflash) at that
+        // moment, the announce is gone and the console-facing port would stay
+        // down forever. Until the descriptor set lands, keep asking Right for
+        // a resync; Right ignores it unless it has a ready device.
+        if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000)) == 0) {
+            if (!device_ready) {
+                ipc_send(FRAME_RESYNC, 0, 0, NULL, 0);
+            }
+            continue;
+        }
         if (teardown_pending) {
             teardown_pending = false;
             if (host_visible) {

@@ -30,6 +30,11 @@ public:
 
     bool is_ready() const { return ready_; }
 
+    // Re-send the descriptor set + DEVICE_READY for an already-enumerated
+    // device. Left asks for this on boot when it missed the one-shot
+    // announce (e.g. it was rebooting from a reflash while we enumerated).
+    void resync();
+
 private:
     usb_host_client_handle_t client_handle_   = nullptr;
     usb_device_handle_t      device_handle_   = nullptr;
@@ -54,7 +59,7 @@ private:
     static void out_xfer_complete(usb_transfer_t *t);
     static void control_xfer_complete(usb_transfer_t *t);
 
-    bool fetch_and_relay_descriptors();
+    bool fetch_and_relay_descriptors(bool claim_interfaces = true);
     bool open_all_endpoints_for_interface(const usb_config_desc_t *cfg,
                                           uint8_t bInterfaceNumber,
                                           uint8_t bAlternateSetting);

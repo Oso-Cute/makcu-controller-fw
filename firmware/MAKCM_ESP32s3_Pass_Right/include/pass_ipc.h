@@ -50,6 +50,8 @@ enum pass_ipc_type : uint8_t {
 
     FRAME_LOG            = 0xF0,
     FRAME_PING           = 0xF1,
+    FRAME_RESYNC         = 0xF2,  // Left→Right: re-send descriptors + READY
+                                  // (Left rebooted and missed the announce)
 };
 
 enum pass_ipc_xfer_status : uint8_t {

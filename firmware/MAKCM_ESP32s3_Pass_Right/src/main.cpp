@@ -45,6 +45,9 @@ void ipc_handle_frame(uint8_t type, uint8_t ep_addr, uint16_t seq,
         extern bool ipc_send(uint8_t, uint8_t, uint16_t, const uint8_t *, uint16_t);
         ipc_send(FRAME_PING, 0, seq, nullptr, 0);
         break;
+    case FRAME_RESYNC:
+        pass_host.resync();
+        break;
     case FRAME_LOG:
         Serial.write(payload, len);
         break;

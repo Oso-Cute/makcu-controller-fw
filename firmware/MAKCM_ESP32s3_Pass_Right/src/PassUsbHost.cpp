@@ -147,6 +147,22 @@ void PassUsbHost::on_new_device(uint8_t address) {
     diag_on_device_ready();
 }
 
+// Left asks for this on boot: if it rebooted (reflash) after we already
+// enumerated the device, the one-shot descriptor relay + DEVICE_READY
+// never reached it and its USB device stack stays down forever — the
+// console-facing port looks electrically dead. Re-ship the descriptor
+// set without re-claiming interfaces (they're already ours).
+void PassUsbHost::resync() {
+    if (!device_connected_ || !ready_ || !device_handle_) {
+        R_LOG("resync ignored (no ready device)");
+        return;
+    }
+    R_LOG("resync: re-relaying descriptors");
+    if (fetch_and_relay_descriptors(false)) {
+        ipc_send(FRAME_DEVICE_READY, 0, 0, nullptr, 0);
+    }
+}
+
 void PassUsbHost::on_device_gone() {
     ESP_LOGI(TAG, "DEV_GONE");
     ready_ = false;
@@ -155,7 +171,7 @@ void PassUsbHost::on_device_gone() {
     ipc_send(FRAME_DEVICE_GONE, 0, 0, nullptr, 0);
 }
 
-bool PassUsbHost::fetch_and_relay_descriptors() {
+bool PassUsbHost::fetch_and_relay_descriptors(bool claim_interfaces) {
     const usb_device_desc_t *dev_desc = nullptr;
     esp_err_t e = usb_host_get_device_descriptor(device_handle_, &dev_desc);
     R_LOG("get_device_desc err=0x%x", e);
@@ -223,6 +239,8 @@ bool PassUsbHost::fetch_and_relay_descriptors() {
     // Claim every interface's alt-0 and open its IN endpoints. (Alt 0 is
     // what SET_CONFIG selects; SET_INTERFACE on alt > 0 is currently
     // forwarded as a control transfer but new endpoints aren't reopened.)
+    // Skipped on a resync — interfaces/endpoints are already ours.
+    if (!claim_interfaces) return true;
     p = (const uint8_t *)cfg_desc;
     while (p + 2 <= end) {
         uint8_t blen = p[0], btyp = p[1];

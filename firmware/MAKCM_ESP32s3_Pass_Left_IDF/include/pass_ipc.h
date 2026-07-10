@@ -50,6 +50,8 @@ enum pass_ipc_type {
 
     FRAME_LOG            = 0xF0,  // ASCII log line (Right → Left, tunneled to COM3)
     FRAME_PING           = 0xF1,  // empty payload; responder echoes same seq
+    FRAME_RESYNC         = 0xF2,  // Left→Right: re-send descriptors + READY
+                                  // (Left rebooted and missed the announce)
 };
 
 enum pass_ipc_xfer_status {
