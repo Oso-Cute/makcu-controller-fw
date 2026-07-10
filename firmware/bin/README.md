@@ -1,15 +1,24 @@
 # Prebuilt flash images
 
-Merged full-flash images built from this repo's source, flashed at offset
-`0x0` (bootloader + partition table + app in one file):
+Merged full-flash images built from **this branch's** source, flashed at
+offset `0x0` (bootloader + partition table + app in one file). The images
+always match the checked-out branch — different branches ship different
+bins.
+
+**This build: 2026-07-10, `debug-tools` branch.**
 
 | File | MCU | Build |
 |------|-----|-------|
-| `MERGED_left.bin` | Left (USB1, console-facing) | Quiet build (`COM3_LOG=0`) + accessibility features |
-| `MERGED_right.bin` | Right (USB3, controller host) | Includes the GIP init fix |
+| `MERGED_left.bin` | Left (USB1, console-facing) | Quiet build (`COM3_LOG=0`) + accessibility features + **`km.debug(0|1)` runtime log toggle** |
+| `MERGED_right.bin` | Right (USB3, controller host) | GIP init fix + **per-connection IN-completion logging** (replugged controllers stay visible) |
+
+Check what is actually flashed on a board: `python accessibility/makcu_access.py`
+— the `km.version()` reply contains the Left build date (e.g. `Jul 10 2026`;
+`Jul  8 2026` = pre-debug main build). A Left build from this branch also
+answers `km.debug(1)` with `km.debug: 1`; older builds ignore it.
 
 Target: ESP32-S3, 4 MB flash, DIO @ 80 MHz (do not re-merge with QIO — it
-won't boot).
+won't boot). Image header must start `e9 xx 02 2f`.
 
 `../flash_tool.py` looks for these files here by default. Flash manually
 with:
