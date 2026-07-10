@@ -159,17 +159,24 @@ def verdict(facts, debug_ack, telem_seconds):
             lens = ", ".join(sorted(facts["kms_len"])) or "?"
             det = [f"~{rate:.0f} reports/s reach the Left MCU, but their first byte is",
                    f"0x{dominant_b0} (length {lens}) — GIP input reports start with 0x20.",
-                   "The controller is not speaking GIP right now, so the console",
-                   "ignores everything it sends.",
-                   "Most likely: the controller is in the wrong MODE. Put it in",
-                   "Xbox/GIP mode (mode switch or vendor button combo — e.g. GameSir",
-                   "pads have a PC/'esports' mode with a different report format).",
-                   "A vendor-app firmware update changing the default mode also fits."]
+                   "The controller is not sending GIP input right now.",
+                   "",
+                   "IMPORTANT: GIP controllers only stream real input after the",
+                   "CONSOLE initializes them. If the console was not connected to",
+                   "USB1 during this capture (or had already marked the device dead),",
+                   "this idle chatter is normal and proves nothing about the",
+                   "controller. Rerun the capture with the console attached and ON,",
+                   "replugging USB1 LAST, then replug the controller.",
+                   "",
+                   "If the console WAS attached and initialized: check the controller",
+                   "is in Xbox/GIP mode (vendor pads like GameSir have PC/'esports'",
+                   "modes with different report formats, and vendor firmware updates",
+                   "can change the default)."]
             if facts["r_lines"] == 0:
                 det.append("(For deeper GIP logs, reflash the Left MCU with the current")
                 det.append("repo build so km.debug(1) works, and rerun this tool.)")
-            return ("Board pipeline WORKS — controller streams non-GIP reports "
-                    "(wrong controller mode).", det)
+            return ("Board pipeline WORKS — but the traffic is not GIP input "
+                    "reports.", det)
         det = ["Input reports in GIP format reach the Left MCU."]
         if not facts["kms_moved"]:
             det.append("NOTE: sticks read 0 the whole capture — if you were moving them,")
