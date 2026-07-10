@@ -4,6 +4,7 @@ Small helper utilities that aren't part of day-to-day use.
 
 | File | What |
 |------|------|
+| `universal_flasher.py` | **Flash any .bin.** Small GUI: browse or drag-drop a `.bin` (drag-drop needs `pip install tkinterdnd2`), pick the COM port, click Flash. Checks the ESP image header (warns on non-DIO images that won't boot), refuses the CH343 command port, defaults to offset 0x0 (use 0x10000 for app-only images). `run_universal_flasher.bat` = double-click wrapper. |
 | `makcm_debug.py` | **"My controller gives no input" debugger.** Guided capture: enables the firmware's runtime diagnostic stream (`km.debug(1)`), has you replug the controller, then tells you WHERE the pipeline breaks (controller → Right MCU → IPC → Left MCU → console) and saves a `.log` to attach to a GitHub issue. Needs firmware built 2026-07-10 or later on the Left MCU. |
 | `button_mapper.py` | Interactive logger: press each controller button when prompted, it captures which bit lights up in the telemetry `b=` mask and writes `button_map.json`. The GUI Monitor tab reads that file to show button names (e.g. `LB + RB`) instead of raw hex. Run once per controller model. |
 | `button_map.json` | Output of the mapper (created on first run, one per repo checkout — remap if you switch controller models). |
