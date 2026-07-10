@@ -12,6 +12,8 @@ Small helper utilities that aren't part of day-to-day use.
 python tools/makcm_debug.py            # auto-detects the CH343 port
 python tools/makcm_debug.py --port COM5 --seconds 30
 ```
+`run_makcm_debug.bat` is a Windows double-click wrapper for the same tool
+(installs pyserial if missing, keeps the window open to read the verdict).
 Wiring while debugging: PC → USB2 (middle) **and** USB1 plugged in (it powers
 the Left MCU); controller → USB3.
 
