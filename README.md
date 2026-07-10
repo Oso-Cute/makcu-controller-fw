@@ -62,7 +62,9 @@ latches, all controllable over the serial command port.
   Tested on one setup: MAKCM board + wired Xbox One (GIP) controller + Xbox
   console + Windows 11 PC. Other combinations should work per the upstream
   docs but are unverified here.
-- **To flash prebuilt images:** Python 3 + `pip install pyserial esptool`.
+- **To flash prebuilt images:** Python 3.10+ — download the Windows installer
+  from [python.org](https://www.python.org/downloads/) and check
+  **"Add python.exe to PATH"** during install. Then `pip install pyserial esptool`.
 - **To build from source:** [PlatformIO](https://platformio.org/) CLI
   (`pip install platformio` or the VS Code extension). The ESP-IDF toolchain
   is downloaded automatically on first build.

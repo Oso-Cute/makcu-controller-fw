@@ -22,6 +22,10 @@ wrong port.
 
 ## Option A — guided tool (easiest)
 
+Needs Python 3.10+. Download the Windows installer from
+[python.org](https://www.python.org/downloads/) and check
+**"Add python.exe to PATH"** during install. Then:
+
 ```
 pip install pyserial esptool
 python firmware/flash_tool.py
