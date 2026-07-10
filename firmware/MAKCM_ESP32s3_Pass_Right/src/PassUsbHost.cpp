@@ -32,6 +32,11 @@ static void R_LOG_fmt(const char *fmt, ...) {
 
 static const char *TAG = "PassUsbHost";
 
+// Per-connection budget of "IN done" diagnostic lines. Reset on every
+// NEW_DEV so a replugged controller is visible too, not just the first
+// one since boot.
+static uint16_t s_in_dbg = 0;
+
 PassUsbHost pass_host;
 
 void PassUsbHost::lib_task(void *arg) {
@@ -116,6 +121,7 @@ void PassUsbHost::on_new_device(uint8_t address) {
     device_connected_ = true;
     gip_got_input_ = false;   // re-arm GIP handshake for this device
     gip_seq_       = 1;
+    s_in_dbg       = 0;       // fresh IN-completion log budget per device
     diag_on_new_dev(address);
 
     esp_err_t err = usb_host_device_open(client_handle_, address, &device_handle_);
@@ -332,11 +338,11 @@ void PassUsbHost::in_xfer_complete(usb_transfer_t *t) {
         !self->device_connected_) {
         return;
     }
-    // Diagnostic: log the first ~20 IN completions per endpoint so we can see
-    // whether the controller is streaming at all, and with what status/bytes.
-    static uint16_t in_dbg = 0;
-    if (in_dbg < 20) {
-        in_dbg++;
+    // Diagnostic: log the first ~20 IN completions per device connection so
+    // we can see whether the controller is streaming at all, and with what
+    // status/bytes.
+    if (s_in_dbg < 20) {
+        s_in_dbg++;
         R_LOG("IN done ep=%02x status=%d nbytes=%u b0=%02x",
               (unsigned)t->bEndpointAddress, (int)t->status,
               (unsigned)t->actual_num_bytes,

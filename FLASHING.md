@@ -113,6 +113,10 @@ can't reboot the chip over that port. Power-cycle to boot the new firmware.
    `python accessibility/makcu_access.py` → expect `kmbox: 1.0.0 …`.
 5. `python accessibility/makcu_monitor.py` → should stream `KMS …` telemetry
    while you move the sticks.
+6. **Controller still gives no input?** Run the guided debugger:
+   `python tools/makcm_debug.py` — it captures the firmware's diagnostic
+   stream while you replug the controller and tells you which stage of the
+   pipeline (controller → Right MCU → IPC → Left MCU → console) is broken.
 
 ## If it won't connect
 

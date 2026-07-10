@@ -156,13 +156,20 @@ int km_uart_write_raw(const void *data, size_t len) {
     return uart_write_bytes(KM_UART_PORT, data, len);
 }
 
+// Runtime override of the COM3_LOG gate: km.debug(1) turns diagnostic
+// output on over the command port without reflashing; km.debug(0) turns
+// it back off. Boots at the compile-time setting, so quiet play builds
+// stay quiet until explicitly asked.
+static volatile int km_log_on = COM3_LOG;
+
+void km_log_set(int on) { km_log_on = on ? 1 : 0; }
+
 int km_uart_write(const void *data, size_t len) {
-#if COM3_LOG
+    if (!km_log_on) {
+        (void)data;
+        return (int)len;
+    }
     return uart_write_bytes(KM_UART_PORT, data, len);
-#else
-    (void)data;
-    return (int)len;
-#endif
 }
 
 // Newline-delimited line reader: feeds each line to km_ingest_raw.

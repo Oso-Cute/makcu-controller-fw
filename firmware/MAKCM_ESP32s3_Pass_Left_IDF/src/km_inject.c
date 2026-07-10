@@ -40,6 +40,7 @@
 
 extern int km_uart_write(const void *data, size_t len);
 extern int km_uart_write_raw(const void *data, size_t len);  // never gated by COM3_LOG
+extern void km_log_set(int on);  // runtime COM3_LOG override (km.debug)
 
 // Idle-time cleanup of stale synth template cache, called from
 // km_housekeep_cb after KM_IDLE_HOUSEKEEP_MS of no km activity. Defined
@@ -531,6 +532,8 @@ static inline uint16_t current_buttons(void) {
 //    km.left(0|1) / km.right(0|1) / km.middle(0|1)
 //    km.btnA/B/X/Y(0|1)
 //    km.lb(0|1) / km.rb(0|1)
+//    km.debug(0|1)               — runtime toggle for [L]/[R] diagnostic log
+//                                  lines on this port (overrides COM3_LOG)
 //  Unsupported (silently ignored): km.moveto, km.aim_mode, smooth-move.
 // ---------------------------------------------------------------------------
 static bool str_starts(const char *s, size_t len, const char *pfx) {
@@ -572,6 +575,14 @@ static void parse_km_text(const char *line, uint16_t len) {
     if (str_starts(buf, n, "km.telem(")) {
         int v = 0; sscanf(buf + 9, "%d", &v);
         atomic_store(&telem_on, v ? 1 : 0); return;
+    }
+    if (str_starts(buf, n, "km.debug(")) {
+        int v = 0; sscanf(buf + 9, "%d", &v);
+        km_log_set(v);
+        char m[32];
+        int ln = snprintf(m, sizeof(m), "km.debug: %d\r\n>>> ", v ? 1 : 0);
+        if (ln > 0) km_uart_write_raw(m, ln);
+        return;
     }
     if (str_starts(buf, n, "km.trim(")) {
         const char *a = strchr(buf, '('); if (!a) return; a++;
