@@ -5,6 +5,9 @@ This was 100% done with the help of Claude.
 💬 **Community:** [Join The S&Box Discord](https://discord.gg/hPFZbJwY2Z) — come share
 what you're building with Titan2 and makcu/controller.
 
+☕ **Support:** [Buy me a coffee](https://buymeacoffee.com/OsoCute) — if this
+project helped you out.
+
 ## Demo video
 
 [![MAKCU Firmware Tools — Quick Intro](https://img.youtube.com/vi/0g_Uu8EqmU4/hqdefault.jpg)](https://youtu.be/0g_Uu8EqmU4)
