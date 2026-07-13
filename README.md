@@ -10,10 +10,9 @@ project helped you out.
 
 ## Releases 
 
-0.10 - (PC)Works for 2 pc and ps5 controller
-0.20 - (XboxSX)Works for offical xbox controller on xbox seriex x
-0.30 - (XboxSX)Works with g7 pro. Needs hard console restart and 
-      Plugging g7 pro to console before trying it on the Makcu
+- **0.10** — (PC) Works for 2 pc and ps5 controller
+- **0.20** — (XboxSX) Works for offical xbox controller on xbox seriex x
+- **0.30** — (XboxSX) Works with g7 pro. Needs hard console restart and plugging g7 pro to console before trying it on the Makcu
 
 
 ## Demo video
