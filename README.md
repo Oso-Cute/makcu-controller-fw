@@ -8,6 +8,14 @@ what you're building with Titan2 and makcu/controller.
 ☕ **Support:** [Buy me a coffee](https://buymeacoffee.com/OsoCute) — if this
 project helped you out.
 
+##
+Releases 
+0.10 - (PC)Works for 2 pc and ps5 controller
+0.20 - (XboxSX)Works for offical xbox controller on xbox seriex x
+0.30 - (XboxSX)Works with g7 pro. Needs hard console restart and 
+      Plugging g7 pro to console before trying it on the Makcu
+
+
 ## Demo video
 
 [![MAKCU Firmware Tools — Quick Intro](https://img.youtube.com/vi/0g_Uu8EqmU4/hqdefault.jpg)](https://youtu.be/0g_Uu8EqmU4)
