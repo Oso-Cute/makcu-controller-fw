@@ -8,8 +8,8 @@ what you're building with Titan2 and makcu/controller.
 ☕ **Support:** [Buy me a coffee](https://buymeacoffee.com/OsoCute) — if this
 project helped you out.
 
-##
-Releases 
+##Releases 
+
 0.10 - (PC)Works for 2 pc and ps5 controller
 0.20 - (XboxSX)Works for offical xbox controller on xbox seriex x
 0.30 - (XboxSX)Works with g7 pro. Needs hard console restart and 
