@@ -85,6 +85,27 @@ latches, all controllable over the serial command port.
 5. **Use the GUI:** `python accessibility/makcu_gui.py` — see
    [accessibility/README.md](accessibility/README.md).
 
+## Releases
+
+Always flash the matching **Left** and **Right** merged-bin pair from the same
+release.
+
+| Release | Target | Verified controller support | Notes |
+|---|---|---|---|
+| `v0.1.0-pc-alpha` | PC | Two PC controllers and a PS5 controller | PC test build. |
+| `v0.2.0-xbox-alpha` | Xbox Series X\|S | Official wired Xbox controller | Xbox passthrough baseline. |
+| `v0.3.0-xbox_g7Pro` | Xbox Series X\|S | GameSir G7 Pro | If the G7 stops waking or passthrough fails, fully restart the console. After it boots, connect and wake the G7 directly on Xbox first; then move it back to MAKCU. |
+
+### GameSir G7 Pro recovery order
+
+For the G7 Pro release, do not keep swapping USB3 after a failed attempt. Use
+this sequence instead:
+
+1. Fully power-cycle the Xbox console and let it boot.
+2. Connect the G7 Pro directly to Xbox and confirm that it wakes.
+3. Move the G7 Pro to MAKCU USB3, connect MAKCU USB1 to Xbox, then hold the
+   G7 Pro power button after USB1 is connected.
+
 ## Build from source
 
 ```bash
