@@ -8,11 +8,16 @@ what you're building with Titan2 and makcu/controller.
 ☕ **Support:** [Buy me a coffee](https://buymeacoffee.com/OsoCute) — if this
 project helped you out.
 
-## Releases 
+## Releases
 
-- **0.10** — (PC) Works for 2 pc and ps5 controller
+See the [Releases page](https://github.com/Oso-Cute/makcu-controller-fw/releases)
+for downloadable merged Left/Right firmware images.
+
+- **0.50** — (PC / XboxSX) Multi-model Xbox controller support: Elite (1698), One S (1708), Series X (1914). One firmware, no per-model bin. Full controller interfaces incl. audio. Elite Series 2 (1797) untested — needs a tester.
+- **0.40** — (XboxSX) Controller + mouse through a bus-powered USB hub (keyboard/mouse host support). See release notes for hub power rules and the 8-channel budget.
+- ~~**0.30**~~ — **removed due to bugs**, do not flash
 - **0.20** — (XboxSX) Works for offical xbox controller on xbox seriex x
-- **0.30** — (XboxSX) Works with g7 pro. Needs hard console restart and plugging g7 pro to console before trying it on the Makcu
+- **0.10** — (PC) Works for 2 pc and ps5 controller
 
 
 ## Demo video
