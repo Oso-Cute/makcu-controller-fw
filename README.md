@@ -13,7 +13,7 @@ project helped you out.
 See the [Releases page](https://github.com/Oso-Cute/makcu-controller-fw/releases)
 for downloadable merged Left/Right firmware images.
 
-- **0.50** — (PC / XboxSX) Multi-model Xbox controller support: Elite (1698), One S (1708), Series X (1914).  Elite Series 2 (1797) untested — needs a tester.
+- **0.50** — (PC ) Multi-model Xbox controller support: Elite (1698), One S (1708), Series X (1914). Please wait 3 minutes anddont spam the xbox button just press it once. Elite Series 2 (1797) untested — needs a tester.
 - **0.40** — (XboxSX) Controller + mouse through a bus-powered USB hub (keyboard/mouse host support). See release notes for hub power rules and the 8-channel budget.
 - ~~**0.30**~~ — **removed due to bugs**, do not flash
 - **0.20** — (XboxSX) Works for offical xbox controller on xbox seriex x
