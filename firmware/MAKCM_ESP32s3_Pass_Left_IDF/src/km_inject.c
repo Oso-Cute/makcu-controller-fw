@@ -20,8 +20,9 @@
 //        aligned signs → inject scaled by (1 − |real|/32768) headroom
 //        opposing signs → inject passes at full gain (cheat can drag the
 //                         stick back through the user's deflection)
-//   3. write merged value back into GIP / XInput / DS5 report bytes
-//      (apply_gip / _xinput negate ry on write, apply_ds5 writes raw)
+//   3. write merged value back into GIP / XInput / DS4 / DS5 report bytes
+//      (apply_gip / _xinput negate ry on write, apply_ds4/_ds5 write raw;
+//       DS4 vs DS5 auto-detected per detect_ds4, override with km.ds4)
 //
 // Upstream km-sender software owns sensitivity, ballistic curves, and
 // pacing — firmware is strictly an input combiner.
@@ -274,6 +275,11 @@ static _Atomic int32_t trim_y = 0;
 #define KM_TELEM 0
 #endif
 static _Atomic uint32_t telem_on = KM_TELEM;
+
+// DS4-vs-DS5 layout selection (see detect_ds4 below, km.ds4 command).
+#define DS4_SCORE_LATCH  50
+static _Atomic int32_t  ds4_force = -1;   // -1 auto, 0 force DS5, 1 force DS4
+static _Atomic uint32_t ds4_score = 0;
 static _Atomic int32_t  tel_lx = 0, tel_ly = 0, tel_rx = 0, tel_ry = 0;
 static _Atomic uint32_t tel_btn = 0;
 // Diagnostic: does km_apply even run, and what report does it see?
@@ -573,6 +579,14 @@ static void parse_km_text(const char *line, uint16_t len) {
         int v = 0; sscanf(buf + 9, "%d", &v);
         atomic_store(&telem_on, v ? 1 : 0); return;
     }
+    if (str_starts(buf, n, "km.ds4(")) {
+        int v = -1; sscanf(buf + 7, "%d", &v);
+        if (v < -1) v = -1;
+        if (v > 1) v = 1;
+        atomic_store(&ds4_force, v);
+        if (v == -1) atomic_store(&ds4_score, 0);   // restart auto-detect
+        return;
+    }
     if (str_starts(buf, n, "km.trim(")) {
         const char *a = strchr(buf, '('); if (!a) return; a++;
         char *e; long x = strtol(a, &e, 10); if (e == a) return;
@@ -745,6 +759,59 @@ static void apply_xinput(uint8_t *buf, uint16_t len, int16_t mrx, int16_t mry, u
 #define DS5_BTN_TRIANGLE 0x80
 #define DS5_BTN_L1       0x01  // byte 9
 #define DS5_BTN_R1       0x02
+
+// DS4 (DualShock 4) USB report 0x01 — same stick bytes as DS5 (3/4 = RX/RY)
+// but buttons live elsewhere:
+//   byte 5: face buttons upper nibble, dpad HAT lower nibble (released = 8)
+//   byte 6: R3 80 L3 40 Options 20 Share 10 R2 08 L2 04 R1 02 L1 01
+//   byte 8/9: L2/R2 analog
+#define DS4_BTN_SQUARE   0x10  // byte 5 upper nibble
+#define DS4_BTN_CROSS    0x20
+#define DS4_BTN_CIRCLE   0x40
+#define DS4_BTN_TRIANGLE 0x80
+#define DS4_BTN_L1       0x01  // byte 6
+#define DS4_BTN_R1       0x02
+#define DS4_BTN_L2       0x04
+#define DS4_BTN_R2       0x08
+
+// DS4-vs-DS5 detection. Both pads report b0=0x01 len=64 over USB, so the
+// layouts are told apart by byte 5: on DS4 its low nibble is the dpad hat
+// (idle = 8, pressed = 0..7 — never 9..15); on DS5 byte 5 is the L2 analog
+// axis whose low nibble sweeps 0..15. Score rises on hat-idle frames and
+// hard-resets on any impossible-for-DS4 nibble. Latches per boot; a pad
+// swap without reboot may need km.ds4(0|1) manual override:
+//   km.ds4(1) force DS4 layout, km.ds4(0) force DS5, km.ds4(-1) auto.
+static bool detect_ds4(const uint8_t *buf) {
+    int32_t f = atomic_load(&ds4_force);
+    if (f >= 0) return f == 1;
+    uint32_t sc = atomic_load(&ds4_score);
+    uint8_t nib = buf[5] & 0x0F;
+    if (nib == 0x08) {
+        if (sc < 200) atomic_store(&ds4_score, sc + 1);
+    } else if (nib > 0x08) {
+        atomic_store(&ds4_score, 0);
+        sc = 0;
+    }
+    return sc >= DS4_SCORE_LATCH;
+}
+
+static void apply_ds4(uint8_t *buf, uint16_t len, int16_t mrx, int16_t mry, uint16_t gen_btn) {
+    if (len < 10 || buf[0] != 0x01) return;
+    buf[3] = s16_to_u8(mrx);
+    buf[4] = s16_to_u8(mry);
+    uint8_t face = 0;
+    if (gen_btn & BTN_A) face |= DS4_BTN_CROSS;
+    if (gen_btn & BTN_B) face |= DS4_BTN_CIRCLE;
+    if (gen_btn & BTN_X) face |= DS4_BTN_SQUARE;
+    if (gen_btn & BTN_Y) face |= DS4_BTN_TRIANGLE;
+    buf[5] |= face;
+    uint8_t b6 = 0;
+    if (gen_btn & BTN_LB)   b6 |= DS4_BTN_L1;
+    if (gen_btn & BTN_RB)   b6 |= DS4_BTN_R1;
+    if (gen_btn & BTN_FIRE) { b6 |= DS4_BTN_R2; buf[9] = 0xFF; }
+    if (gen_btn & BTN_ADS)  { b6 |= DS4_BTN_L2; buf[8] = 0xFF; }
+    buf[6] |= b6;
+}
 
 static void apply_ds5(uint8_t *buf, uint16_t len, int16_t mrx, int16_t mry, uint16_t gen_btn) {
     if (len < 11 || buf[0] != 0x01) return;
@@ -919,11 +986,14 @@ void km_apply(uint8_t ep_addr, uint8_t *buf, uint16_t len) {
     }
     // DS4 / DS5 — 64-byte HID report starting 0x01
     if (len >= 64 && buf[0] == 0x01) {
+        bool is_ds4 = detect_ds4(buf);
         atomic_store(&tel_lx, ((int32_t)buf[1] - 128) << 8);
         atomic_store(&tel_ly, ((int32_t)buf[2] - 128) << 8);
         atomic_store(&tel_rx, ((int32_t)buf[3] - 128) << 8);
         atomic_store(&tel_ry, ((int32_t)buf[4] - 128) << 8);
-        atomic_store(&tel_btn, (uint32_t)((uint16_t)buf[8] | ((uint16_t)buf[9] << 8)));
+        atomic_store(&tel_btn, is_ds4
+            ? (uint32_t)((uint16_t)buf[5] | ((uint16_t)buf[6] << 8))
+            : (uint32_t)((uint16_t)buf[8] | ((uint16_t)buf[9] << 8)));
         int32_t px, py, ix, iy;
         extract_physical_ds5(buf, &px, &py);
         int32_t tx = atomic_load(&trim_x), ty = atomic_load(&trim_y);
@@ -943,7 +1013,8 @@ void km_apply(uint8_t ep_addr, uint8_t *buf, uint16_t len) {
         }
 #endif
         if (!force && mrx == 0 && mry == 0 && gen_btn == 0) return;
-        apply_ds5(buf, len, mrx, mry, gen_btn);
+        if (is_ds4) apply_ds4(buf, len, mrx, mry, gen_btn);
+        else        apply_ds5(buf, len, mrx, mry, gen_btn);
         return;
     }
 }
