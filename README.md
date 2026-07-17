@@ -17,6 +17,7 @@ for downloadable merged Left/Right firmware images.
 [PC Connection Guide](docs/PC_CONNECTION_GUIDE.md) — step-by-step for the
 Elite (1698), One S (1708), and Series X (1914).
 
+- **0.60** — (PC) PS4 V2 controller (DualShock 4) support: sticks, triggers, face buttons, L1/R1 all inject. DS4/DS5 layout auto-detected; `km.ds4(1|0|-1)` to override. Flash BOTH bins, then hard power-cycle the board.
 - **0.50** — (PC ) Multi-model Xbox controller support: Elite (1698), One S (1708), Series X (1914). Please wait 3 minutes and dont spam the xbox button just press it once. Elite Series 2 (1797) untested — needs a tester.
 - **0.40** — (XboxSX) Controller + mouse through a bus-powered USB hub (keyboard/mouse host support). See release notes for hub power rules and the 8-channel budget.
 - ~~**0.30**~~ — **removed due to bugs**, do not flash
