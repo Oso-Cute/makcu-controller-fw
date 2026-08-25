@@ -25,7 +25,14 @@ and the `km.*` serial API). This repo adds:
 - **Right MCU: GIP init handshake** (identify / power-on / LED) so Xbox One
   GIP controllers actually start streaming input. Without this the stock
   package delivers no input at all. Details in
-  [../docs/ISSUE_REPORT.md](../docs/ISSUE_REPORT.md).
+  [../docs/ISSUE_REPORT.md](../docs/ISSUE_REPORT.md). Nintendo VID `057E`
+  pads skip this handshake (it would confuse Switch HID) and get a Switch
+  USB startup instead so the pad actually sends input.
+- **Left MCU: Switch HID to Xbox 360 XInput** when the real pad is
+  `VID 057E` (GameSir Cyclone 2 in NS mode, Switch Pro clones). USB1
+  looks like `045E:028E` and reports are converted so Windows and Steam
+  see a normal XInput controller. Official Xbox pads still pass through
+  unchanged. See `MAKCM_ESP32s3_Pass_Left_IDF/src/switch_xbox.c`.
 - **Left MCU: accessibility commands** on the serial channel — `km.steady*`
   (tremor low-pass + deadzone), `km.trim` (drift cancel), `km.telem`
   (telemetry stream), plus the existing button hold/latch commands.

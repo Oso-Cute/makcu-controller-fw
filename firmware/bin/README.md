@@ -5,12 +5,12 @@ offset `0x0` (bootloader + partition table + app in one file). The images
 always match the checked-out branch — different branches ship different
 bins.
 
-**This build: 2026-07-08, `main` branch** (stable release build).
+**This build: Cyclone 2 translator. Switch HID on USB3 becomes Xbox 360 XInput on USB1.**
 
 | File | MCU | Build |
 |------|-----|-------|
-| `MERGED_left.bin` | Left (USB1, console-facing) | Quiet build (`COM3_LOG=0`) + accessibility features |
-| `MERGED_right.bin` | Right (USB3, controller host) | Includes the GIP init fix |
+| `MERGED_left.bin` | Left (USB1, host PC) | Quiet build plus Switch Pro (`057E`) to Xbox 360 (`045E:028E`) |
+| `MERGED_right.bin` | Right (USB3, controller) | GIP startup for Xbox pads. Nintendo VID uses Switch startup instead |
 
 Check what is actually flashed on a board: `python accessibility/makcu_access.py`
 — the `km.version()` reply contains the Left build date (`Jul  8 2026` = this

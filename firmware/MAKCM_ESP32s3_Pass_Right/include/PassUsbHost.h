@@ -66,8 +66,10 @@ private:
     uint8_t  gip_out_ep_    = 0x02;   // interrupt OUT ep, learned from descriptors
     uint8_t  gip_seq_       = 1;      // GIP sequence, non-zero, increments
     bool     gip_got_input_ = false;  // true once a real 0x20 input report seen
+    bool     skip_gip_      = false;  // Nintendo / non-GIP pads
     void gip_send(uint8_t cmd, uint8_t options, const uint8_t *payload, uint8_t plen);
     void gip_kickstart();
+    void switch_kickstart();
 
     void release_all();
 };

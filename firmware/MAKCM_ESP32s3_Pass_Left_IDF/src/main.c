@@ -12,6 +12,7 @@
 #include "esp_log.h"
 #include "tinyusb.h"
 #include "pass_ipc.h"
+#include "switch_xbox.h"
 
 void ipc_init(void);
 bool ipc_send(uint8_t type, uint8_t ep_addr, uint16_t seq,
@@ -166,13 +167,14 @@ static void start_usb(void) {
 
 void ipc_handle_frame(uint8_t type, uint8_t ep_addr, uint16_t seq,
                       const uint8_t *payload, uint16_t len) {
-    (void)ep_addr; (void)seq;
+    (void)seq;
     bool poke_main = false;
     switch (type) {
     case FRAME_DESC_DEVICE:
         if (len == 18) {
             memcpy(&desc_device, payload, 18);
             desc_device_valid = true;
+            switch_xbox_on_device_desc(desc_device.idVendor, desc_device.idProduct);
             poke_main = true;
         }
         break;
@@ -211,7 +213,14 @@ void ipc_handle_frame(uint8_t type, uint8_t ep_addr, uint16_t seq,
         poke_main = true;
         break;
     case FRAME_EP_IN:
-        pass_usb_submit_in(ep_addr, payload, len);
+        if (switch_xbox_active()) {
+            uint8_t xi[SWITCH_XBOX_REPORT_LEN];
+            if (switch_xbox_translate(payload, len, xi)) {
+                pass_usb_submit_in(SWITCH_XBOX_EP_IN, xi, SWITCH_XBOX_REPORT_LEN);
+            }
+        } else {
+            pass_usb_submit_in(ep_addr, payload, len);
+        }
         break;
     case FRAME_CTRL_IN_DATA:
         pass_usb_control_in_complete(seq, payload, len);
@@ -278,10 +287,23 @@ static void main_task(void *arg) {
             desc_config_len   = 0;
             strings_count     = 0;
             device_ready      = false;
+            switch_xbox_reset();
             continue;
         }
         if (!host_visible && device_ready &&
             desc_device_valid && desc_config_valid) {
+            if (switch_xbox_active()) {
+                switch_xbox_fill_device(&desc_device);
+                switch_xbox_fill_config(desc_config, &desc_config_len);
+                strings_count = 0;
+                for (uint8_t idx = 1; idx <= 3 && strings_count < 8; idx++) {
+                    strings[strings_count].idx = idx;
+                    strings[strings_count].byte_len =
+                        switch_xbox_utf16_string(idx, strings[strings_count].utf16,
+                                                 sizeof(strings[0].utf16));
+                    strings_count++;
+                }
+            }
             start_usb();
         }
     }
