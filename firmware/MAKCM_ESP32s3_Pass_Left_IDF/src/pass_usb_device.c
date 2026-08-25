@@ -30,6 +30,7 @@
 #include "device/usbd_pvt.h"
 #include "tinyusb.h"
 #include "pass_ipc.h"
+#include "switch_xbox.h"
 
 // Latency diagnostic — emits one line per LAT_DIAG_EMIT_N IN submissions:
 //   [L] LAT n=100 sub=12/34/178us gap=3120/4012/8220us coal=0
@@ -234,7 +235,7 @@ static uint16_t pass_driver_open(uint8_t rhport,
                     if (!slot->is_in) {
                         uint16_t n = slot->mps > sizeof(slot->rx_buf) ?
                                      sizeof(slot->rx_buf) : slot->mps;
-                        usbd_edpt_xfer(rhport, slot->addr, slot->rx_buf, n);
+                        usbd_edpt_xfer(rhport, slot->addr, slot->rx_buf, n, false);
                     }
                 } else {
                     ESP_LOGW(TAG, "usbd_edpt_open failed ep=0x%02x", ep->bEndpointAddress);
@@ -259,6 +260,30 @@ static uint16_t pass_driver_open(uint8_t rhport,
 //   OUT, wLength == 0: ship setup, wait for STATUS.
 static bool pass_driver_control_xfer(uint8_t rhport, uint8_t stage,
                                       tusb_control_request_t const *request) {
+    // Xbox identity is synthetic — do not forward xusb22 rumble/LED
+    // control requests to the Switch pad.
+    if (switch_xbox_active()) {
+        if (stage == CONTROL_STAGE_SETUP) {
+            if (!request) return false;
+            const bool is_in = (request->bmRequestType & 0x80) != 0;
+            if (is_in && request->wLength > 0) {
+                static uint8_t dummy[64];
+                memset(dummy, 0, sizeof(dummy));
+                uint16_t n = request->wLength > sizeof(dummy)
+                                 ? (uint16_t)sizeof(dummy)
+                                 : request->wLength;
+                return tud_control_xfer(rhport, request, dummy, n);
+            }
+            if (!is_in && request->wLength > 0) {
+                if (request->wLength > CTL_OUT_BUF_SZ) return false;
+                return tud_control_xfer(rhport, request, ctl_out_buf,
+                                        request->wLength);
+            }
+            return tud_control_status(rhport, request);
+        }
+        return true;
+    }
+
     if (stage == CONTROL_STAGE_SETUP) {
         if (!request) return false;
         if (ctl_pending) {
@@ -374,7 +399,7 @@ static bool pass_driver_xfer_cb(uint8_t rhport, uint8_t ep_addr,
         }
         portEXIT_CRITICAL(&io_lock);
         if (promote_len) {
-            if (!usbd_edpt_xfer(rhport, ep_addr, slot->rx_buf, promote_len)) {
+            if (!usbd_edpt_xfer(rhport, ep_addr, slot->rx_buf, promote_len, false)) {
                 portENTER_CRITICAL(&io_lock);
                 slot->in_flight = false;
                 portEXIT_CRITICAL(&io_lock);
@@ -382,21 +407,23 @@ static bool pass_driver_xfer_cb(uint8_t rhport, uint8_t ep_addr,
         }
     } else {
         if (result == XFER_RESULT_SUCCESS && xferred) {
-            ipc_send(FRAME_EP_OUT, ep_addr, 0, slot->rx_buf, (uint16_t)xferred);
-            int64_t t_us = esp_timer_get_time();
-            char m[160];
-            int ln = snprintf(m, sizeof(m), "[L] EP_OUT t=%lld ep=%02x len=%u hex=",
-                              (long long)t_us, ep_addr, (unsigned)xferred);
-            uint16_t show = xferred > 20 ? 20 : xferred;
-            for (uint16_t i = 0; i < show && ln < (int)sizeof(m) - 3; ++i) {
-                ln += snprintf(m + ln, sizeof(m) - ln, "%02x", slot->rx_buf[i]);
+            if (!switch_xbox_active()) {
+                ipc_send(FRAME_EP_OUT, ep_addr, 0, slot->rx_buf, (uint16_t)xferred);
+                int64_t t_us = esp_timer_get_time();
+                char m[160];
+                int ln = snprintf(m, sizeof(m), "[L] EP_OUT t=%lld ep=%02x len=%u hex=",
+                                  (long long)t_us, ep_addr, (unsigned)xferred);
+                uint16_t show = xferred > 20 ? 20 : xferred;
+                for (uint16_t i = 0; i < show && ln < (int)sizeof(m) - 3; ++i) {
+                    ln += snprintf(m + ln, sizeof(m) - ln, "%02x", slot->rx_buf[i]);
+                }
+                if (ln < (int)sizeof(m) - 1) m[ln++] = '\n';
+                km_uart_write(m, ln);
             }
-            if (ln < (int)sizeof(m) - 1) m[ln++] = '\n';
-            km_uart_write(m, ln);
         }
         uint16_t n = slot->mps > sizeof(slot->rx_buf) ?
                      sizeof(slot->rx_buf) : slot->mps;
-        usbd_edpt_xfer(rhport, ep_addr, slot->rx_buf, n);
+        usbd_edpt_xfer(rhport, ep_addr, slot->rx_buf, n, false);
     }
     return true;
 }
@@ -490,7 +517,7 @@ static bool submit_in_core(uint8_t ep_addr, const uint8_t *data, uint16_t len, b
             portEXIT_CRITICAL(&io_lock);
             ok = false;
         } else {
-            ok = usbd_edpt_xfer(0, ep_addr, slot->rx_buf, len);
+            ok = usbd_edpt_xfer(0, ep_addr, slot->rx_buf, len, false);
             if (!ok) {
                 usbd_edpt_release(0, ep_addr);
                 portENTER_CRITICAL(&io_lock);
@@ -555,7 +582,7 @@ static void synth_cb(void *arg) {
         prev_active = false;
         return;
     }
-    bool now_active   = km_has_active_injection();
+    bool now_active   = km_has_active_injection() || switch_xbox_active();
     bool falling_edge = prev_active && !now_active;
     prev_active       = now_active;
     if (!now_active && !falling_edge) return;

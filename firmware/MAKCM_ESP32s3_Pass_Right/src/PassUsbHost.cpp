@@ -116,6 +116,7 @@ void PassUsbHost::on_new_device(uint8_t address) {
     device_connected_ = true;
     gip_got_input_ = false;   // re-arm GIP handshake for this device
     gip_seq_       = 1;
+    skip_gip_      = false;
     diag_on_new_dev(address);
 
     esp_err_t err = usb_host_device_open(client_handle_, address, &device_handle_);
@@ -139,6 +140,9 @@ void PassUsbHost::on_new_device(uint8_t address) {
     ipc_send(FRAME_DEVICE_READY, 0, 0, nullptr, 0);
     ready_ = true;
     diag_on_device_ready();
+    if (skip_gip_) {
+        switch_kickstart();
+    }
 }
 
 void PassUsbHost::on_device_gone() {
@@ -158,6 +162,10 @@ bool PassUsbHost::fetch_and_relay_descriptors() {
           (unsigned)dev_desc->idVendor, (unsigned)dev_desc->idProduct,
           (unsigned)dev_desc->bDeviceClass, (unsigned)dev_desc->bDeviceSubClass,
           (unsigned)dev_desc->bDeviceProtocol, (unsigned)dev_desc->bcdDevice);
+    skip_gip_ = (dev_desc->idVendor == 0x057E);
+    if (skip_gip_) {
+        R_LOG("skip GIP kickstart (Nintendo VID)");
+    }
     ipc_send(FRAME_DESC_DEVICE, 0, 0, (const uint8_t *)dev_desc, 18);
 
     const usb_config_desc_t *cfg_desc = nullptr;
@@ -321,6 +329,44 @@ void PassUsbHost::gip_kickstart() {
     gip_send(0x0a, opt, led, 3);              // GIP_CMD_LED
 }
 
+// Nintendo Switch Pro / GameSir NS: the pad sits silent until the USB host
+// sends the proprietary handshake. Windows used to do this through the
+// passthrough; in translator mode we must do it here.
+void PassUsbHost::switch_kickstart() {
+    uint8_t ep = gip_out_ep_ ? gip_out_ep_ : 0x01;
+    R_LOG("switch kickstart out_ep=%02x", (unsigned)ep);
+
+    auto send80 = [&](uint8_t cmd) {
+        uint8_t pkt[8] = {0};
+        pkt[0] = 0x80;
+        pkt[1] = cmd;
+        bool ok = submit_out(ep, pkt, sizeof(pkt));
+        R_LOG("switch 80 %02x ok=%d", (unsigned)cmd, (int)ok);
+        vTaskDelay(pdMS_TO_TICKS(40));
+    };
+
+    send80(0x02); // handshake
+    send80(0x03); // high-speed
+    send80(0x02); // handshake
+    send80(0x04); // force USB / no timeout
+
+    uint8_t sub[64];
+    memset(sub, 0, sizeof(sub));
+    sub[0] = 0x01;              // rumble + subcommand
+    sub[1] = 0x00;              // packet number
+    sub[2] = 0x00; sub[3] = 0x01; sub[4] = 0x40; sub[5] = 0x40;
+    sub[6] = 0x00; sub[7] = 0x01; sub[8] = 0x40; sub[9] = 0x40;
+    sub[10] = 0x03;             // SetInputReportMode
+    sub[11] = 0x30;             // full 0x30 reports
+    bool ok = submit_out(ep, sub, sizeof(sub));
+    R_LOG("switch setmode 30 ok=%d", (int)ok);
+    vTaskDelay(pdMS_TO_TICKS(40));
+    sub[1] = 0x01;
+    sub[11] = 0x3F;             // also enable simple 0x3F
+    ok = submit_out(ep, sub, sizeof(sub));
+    R_LOG("switch setmode 3F ok=%d", (int)ok);
+}
+
 void PassUsbHost::in_xfer_complete(usb_transfer_t *t) {
     auto *self = static_cast<PassUsbHost *>(t->context);
     // If the device is gone (release_all ran) or status is NO_DEVICE /
@@ -335,12 +381,15 @@ void PassUsbHost::in_xfer_complete(usb_transfer_t *t) {
     // Diagnostic: log the first ~20 IN completions per endpoint so we can see
     // whether the controller is streaming at all, and with what status/bytes.
     static uint16_t in_dbg = 0;
-    if (in_dbg < 20) {
+    if (in_dbg < 40) {
         in_dbg++;
-        R_LOG("IN done ep=%02x status=%d nbytes=%u b0=%02x",
+        R_LOG("IN done ep=%02x status=%d nbytes=%u b0=%02x b1=%02x b2=%02x b3=%02x",
               (unsigned)t->bEndpointAddress, (int)t->status,
               (unsigned)t->actual_num_bytes,
-              t->actual_num_bytes ? (unsigned)t->data_buffer[0] : 0);
+              t->actual_num_bytes ? (unsigned)t->data_buffer[0] : 0,
+              t->actual_num_bytes > 1 ? (unsigned)t->data_buffer[1] : 0,
+              t->actual_num_bytes > 2 ? (unsigned)t->data_buffer[2] : 0,
+              t->actual_num_bytes > 3 ? (unsigned)t->data_buffer[3] : 0);
     }
     if (t->status == USB_TRANSFER_STATUS_COMPLETED && t->actual_num_bytes > 0) {
         uint8_t b0 = t->data_buffer[0];
@@ -348,7 +397,7 @@ void PassUsbHost::in_xfer_complete(usb_transfer_t *t) {
         // (device waiting to be initialized). Kick it until input flows.
         if (b0 == 0x20) {
             self->gip_got_input_ = true;
-        } else if (b0 == 0x02 && !self->gip_got_input_) {
+        } else if (b0 == 0x02 && !self->gip_got_input_ && !self->skip_gip_) {
             self->gip_kickstart();
         }
         ipc_send(FRAME_EP_IN, t->bEndpointAddress, 0,
